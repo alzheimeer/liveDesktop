@@ -131,6 +131,14 @@ npm run lint
 npm run tauri build
 ```
 
+### Pruebas en macOS
+
+Para probar la aplicación en macOS localmente:
+1. Asegúrate de tener los prerrequisitos de compilación instalados (Xcode Command Line Tools): `xcode-select --install`.
+2. Otorga los permisos necesarios para la captura de pantalla y micrófono en **Configuración del Sistema > Privacidad y seguridad**. Al correr la app en modo dev, la terminal que utilices (ej. VS Code, iTerm, Terminal) necesitará estos permisos.
+3. Para compilar y correr la aplicación en modo desarrollo: `npm run tauri dev`.
+4. Si tienes problemas con variables de entorno, asegúrate de configurar tu archivo `.env.local` con las credenciales necesarias antes de iniciar la app.
+
 ### Tests
 
 ```bash
