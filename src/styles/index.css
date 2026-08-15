@@ -1,0 +1,291 @@
+/* Tailwind CSS 4 entry point */
+@import "tailwindcss";
+
+/* =============================================================================
+   Design System Tokens - Dark Theme with Indigo/Cyan Accents
+   Matches the web app design system (Requirement 12.7)
+   ============================================================================= */
+
+@theme {
+  /* ---------------------------------------------------------------------------
+     Primary Colors - Indigo Accent
+     Used for primary actions, active states, and emphasis
+     --------------------------------------------------------------------------- */
+  --color-primary: oklch(0.55 0.24 265);           /* indigo-500 equivalent */
+  --color-primary-hover: oklch(0.48 0.26 265);     /* indigo-600 equivalent */
+  --color-primary-light: oklch(0.62 0.22 265);     /* indigo-400 equivalent */
+  --color-primary-dark: oklch(0.42 0.26 265);      /* indigo-700 equivalent */
+
+  /* ---------------------------------------------------------------------------
+     Secondary Colors - Cyan Accent
+     Used for secondary actions, links, and complementary elements
+     --------------------------------------------------------------------------- */
+  --color-secondary: oklch(0.70 0.18 195);         /* cyan-500 equivalent */
+  --color-secondary-hover: oklch(0.62 0.18 195);   /* cyan-600 equivalent */
+  --color-secondary-light: oklch(0.78 0.15 195);   /* cyan-400 equivalent */
+  --color-secondary-dark: oklch(0.55 0.18 195);    /* cyan-700 equivalent */
+
+  /* ---------------------------------------------------------------------------
+     Background Colors - Slate Dark Palette
+     Creates depth and hierarchy in the dark theme
+     --------------------------------------------------------------------------- */
+  --color-background: oklch(0.13 0.015 265);       /* slate-900 equivalent - main bg */
+  --color-background-darker: oklch(0.10 0.015 265);/* slate-950 equivalent - deepest */
+
+  /* ---------------------------------------------------------------------------
+     Surface Colors - Cards, Panels, Modals
+     Elevated surfaces over the background
+     --------------------------------------------------------------------------- */
+  --color-surface: oklch(0.18 0.015 265);          /* slate-800 equivalent */
+  --color-surface-hover: oklch(0.23 0.015 265);    /* slate-700 equivalent */
+  --color-surface-elevated: oklch(0.25 0.015 265); /* raised elements */
+  --color-surface-overlay: oklch(0.15 0.015 265 / 0.8); /* modals/overlays */
+
+  /* ---------------------------------------------------------------------------
+     Text Colors - Hierarchy for readability
+     --------------------------------------------------------------------------- */
+  --color-text: oklch(0.98 0.005 265);             /* white - primary text */
+  --color-text-secondary: oklch(0.70 0.01 265);    /* gray-300 - secondary */
+  --color-text-muted: oklch(0.55 0.01 265);        /* gray-400 - muted/disabled */
+  --color-text-inverse: oklch(0.13 0.015 265);     /* dark text on light bg */
+
+  /* ---------------------------------------------------------------------------
+     Border Colors - Subtle separation
+     --------------------------------------------------------------------------- */
+  --color-border: oklch(0.30 0.015 265);           /* default border */
+  --color-border-subtle: oklch(0.25 0.015 265);    /* subtle division */
+  --color-border-focus: oklch(0.55 0.24 265);      /* focus rings (primary) */
+
+  /* ---------------------------------------------------------------------------
+     Status Colors - Feedback and state indication
+     --------------------------------------------------------------------------- */
+  --color-success: oklch(0.68 0.19 145);           /* green-500 */
+  --color-success-light: oklch(0.75 0.16 145);     /* green-400 */
+  --color-error: oklch(0.60 0.24 25);              /* red-500 */
+  --color-error-light: oklch(0.68 0.20 25);        /* red-400 */
+  --color-warning: oklch(0.75 0.18 85);            /* yellow-500 */
+  --color-warning-light: oklch(0.82 0.15 85);      /* yellow-400 */
+  --color-info: oklch(0.65 0.18 240);              /* blue-500 */
+
+  /* ---------------------------------------------------------------------------
+     Audio Channel State Colors
+     Visual indicators for translation channel status (Req 12.3)
+     --------------------------------------------------------------------------- */
+  --color-state-inactive: oklch(0.45 0.01 265);    /* gray - channel off */
+  --color-state-active: oklch(0.68 0.19 145);      /* green - translating */
+  --color-state-error: oklch(0.60 0.24 25);        /* red - error state */
+  --color-state-connecting: oklch(0.75 0.18 85);   /* yellow - connecting */
+
+  /* ---------------------------------------------------------------------------
+     Audio Level Meter Colors
+     Volume indicator gradient (Req 12.4)
+     --------------------------------------------------------------------------- */
+  --color-level-low: oklch(0.68 0.19 145);         /* green - safe level */
+  --color-level-mid: oklch(0.75 0.18 85);          /* yellow - moderate */
+  --color-level-high: oklch(0.60 0.24 25);         /* red - clipping */
+
+  /* ---------------------------------------------------------------------------
+     Interactive Element Colors
+     Buttons, inputs, and interactive components
+     --------------------------------------------------------------------------- */
+  --color-input-bg: oklch(0.15 0.015 265);         /* input background */
+  --color-input-border: oklch(0.35 0.015 265);     /* input border */
+  --color-input-focus: oklch(0.55 0.24 265);       /* focus state */
+  --color-input-placeholder: oklch(0.50 0.01 265); /* placeholder text */
+
+  /* ---------------------------------------------------------------------------
+     Shadows - Depth and elevation
+     --------------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.4);
+  --shadow-md: 0 4px 6px -1px oklch(0 0 0 / 0.5), 0 2px 4px -2px oklch(0 0 0 / 0.4);
+  --shadow-lg: 0 10px 15px -3px oklch(0 0 0 / 0.5), 0 4px 6px -4px oklch(0 0 0 / 0.4);
+  --shadow-xl: 0 20px 25px -5px oklch(0 0 0 / 0.5), 0 8px 10px -6px oklch(0 0 0 / 0.4);
+  --shadow-glow-primary: 0 0 20px oklch(0.55 0.24 265 / 0.3);
+  --shadow-glow-secondary: 0 0 20px oklch(0.70 0.18 195 / 0.3);
+
+  /* ---------------------------------------------------------------------------
+     Border Radius - Consistent rounding
+     --------------------------------------------------------------------------- */
+  --radius-sm: 0.375rem;    /* 6px */
+  --radius-md: 0.5rem;      /* 8px */
+  --radius-lg: 0.75rem;     /* 12px */
+  --radius-xl: 1rem;        /* 16px */
+  --radius-2xl: 1.5rem;     /* 24px */
+  --radius-full: 9999px;    /* pill/circle */
+
+  /* ---------------------------------------------------------------------------
+     Spacing Scale - Consistent spacing
+     --------------------------------------------------------------------------- */
+  --spacing-xs: 0.25rem;    /* 4px */
+  --spacing-sm: 0.5rem;     /* 8px */
+  --spacing-md: 1rem;       /* 16px */
+  --spacing-lg: 1.5rem;     /* 24px */
+  --spacing-xl: 2rem;       /* 32px */
+  --spacing-2xl: 3rem;      /* 48px */
+
+  /* ---------------------------------------------------------------------------
+     Typography Scale
+     --------------------------------------------------------------------------- */
+  --font-size-xs: 0.75rem;    /* 12px */
+  --font-size-sm: 0.875rem;   /* 14px */
+  --font-size-base: 1rem;     /* 16px */
+  --font-size-lg: 1.125rem;   /* 18px */
+  --font-size-xl: 1.25rem;    /* 20px */
+  --font-size-2xl: 1.5rem;    /* 24px */
+  --font-size-3xl: 1.875rem;  /* 30px */
+
+  /* ---------------------------------------------------------------------------
+     Transitions - Smooth animations
+     --------------------------------------------------------------------------- */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+}
+
+/* =============================================================================
+   Base Styles
+   ============================================================================= */
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-background text-text antialiased;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+}
+
+/* Prevent text selection on UI elements (feels more native) */
+button, 
+[role="button"],
+.no-select {
+  user-select: none;
+}
+
+/* =============================================================================
+   Focus Styles - Accessibility
+   ============================================================================= */
+
+*:focus-visible {
+  outline: 2px solid var(--color-border-focus);
+  outline-offset: 2px;
+}
+
+/* Remove focus outline for mouse users */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* =============================================================================
+   Scrollbar Styling - Dark theme consistent
+   ============================================================================= */
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-background;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+  transition: background-color var(--transition-normal);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-text-muted;
+}
+
+/* =============================================================================
+   Custom Utility Classes
+   ============================================================================= */
+
+/* Glass effect for elevated surfaces */
+.glass {
+  background: oklch(0.18 0.015 265 / 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Gradient backgrounds using primary/secondary */
+.gradient-primary {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+}
+
+.gradient-secondary {
+  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-secondary-dark) 100%);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+}
+
+/* Glow effects for active states */
+.glow-primary {
+  box-shadow: var(--shadow-glow-primary);
+}
+
+.glow-secondary {
+  box-shadow: var(--shadow-glow-secondary);
+}
+
+/* Pulse animation for active/recording states */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 oklch(0.68 0.19 145 / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px oklch(0.68 0.19 145 / 0);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* =============================================================================
+   Audio Level Meter Gradient
+   ============================================================================= */
+
+.audio-level-gradient {
+  background: linear-gradient(
+    to right,
+    var(--color-level-low) 0%,
+    var(--color-level-low) 60%,
+    var(--color-level-mid) 75%,
+    var(--color-level-high) 100%
+  );
+}
+
+/* =============================================================================
+   Channel State Indicators
+   ============================================================================= */
+
+.state-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  transition: background-color var(--transition-normal), box-shadow var(--transition-normal);
+}
+
+.state-indicator.inactive {
+  @apply bg-state-inactive;
+}
+
+.state-indicator.active {
+  @apply bg-state-active;
+  box-shadow: 0 0 8px var(--color-state-active);
+}
+
+.state-indicator.error {
+  @apply bg-state-error;
+  box-shadow: 0 0 8px var(--color-state-error);
+}
+
+.state-indicator.connecting {
+  @apply bg-state-connecting;
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
