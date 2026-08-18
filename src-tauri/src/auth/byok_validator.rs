@@ -211,7 +211,7 @@ impl ByokValidator {
 
         if !api_key
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
         {
             return Err(ByokValidationError::InvalidFormat {
                 reason: "La API key contiene caracteres inválidos".to_string(),

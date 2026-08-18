@@ -851,7 +851,6 @@ export function OnboardingWizard({ onComplete, onSkip, isOpen }: OnboardingWizar
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-surface rounded-2xl shadow-2xl w-full max-w-lg mx-4 border border-border overflow-hidden">
-        {/* Header */}
         <div className="px-6 pt-6 pb-2">
           <StepIndicator current={currentStepIndex} total={totalSteps} />
         </div>

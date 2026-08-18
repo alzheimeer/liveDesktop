@@ -11,97 +11,97 @@
      Primary Colors - Indigo Accent
      Used for primary actions, active states, and emphasis
      --------------------------------------------------------------------------- */
-  --color-primary: oklch(0.55 0.24 265);           /* indigo-500 equivalent */
-  --color-primary-hover: oklch(0.48 0.26 265);     /* indigo-600 equivalent */
-  --color-primary-light: oklch(0.62 0.22 265);     /* indigo-400 equivalent */
-  --color-primary-dark: oklch(0.42 0.26 265);      /* indigo-700 equivalent */
+  --color-primary: #6366f1;           /* indigo-500 equivalent */
+  --color-primary-hover: #4f46e5;     /* indigo-600 equivalent */
+  --color-primary-light: #818cf8;     /* indigo-400 equivalent */
+  --color-primary-dark: #4338ca;      /* indigo-700 equivalent */
 
   /* ---------------------------------------------------------------------------
      Secondary Colors - Cyan Accent
      Used for secondary actions, links, and complementary elements
      --------------------------------------------------------------------------- */
-  --color-secondary: oklch(0.70 0.18 195);         /* cyan-500 equivalent */
-  --color-secondary-hover: oklch(0.62 0.18 195);   /* cyan-600 equivalent */
-  --color-secondary-light: oklch(0.78 0.15 195);   /* cyan-400 equivalent */
-  --color-secondary-dark: oklch(0.55 0.18 195);    /* cyan-700 equivalent */
+  --color-secondary: #06b6d4;         /* cyan-500 equivalent */
+  --color-secondary-hover: #0891b2;   /* cyan-600 equivalent */
+  --color-secondary-light: #22d3ee;   /* cyan-400 equivalent */
+  --color-secondary-dark: #0e7490;    /* cyan-700 equivalent */
 
   /* ---------------------------------------------------------------------------
      Background Colors - Slate Dark Palette
      Creates depth and hierarchy in the dark theme
      --------------------------------------------------------------------------- */
-  --color-background: oklch(0.13 0.015 265);       /* slate-900 equivalent - main bg */
-  --color-background-darker: oklch(0.10 0.015 265);/* slate-950 equivalent - deepest */
+  --color-background: #0f172a;       /* slate-900 equivalent - main bg */
+  --color-background-darker: #020617;/* slate-950 equivalent - deepest */
 
   /* ---------------------------------------------------------------------------
      Surface Colors - Cards, Panels, Modals
      Elevated surfaces over the background
      --------------------------------------------------------------------------- */
-  --color-surface: oklch(0.18 0.015 265);          /* slate-800 equivalent */
-  --color-surface-hover: oklch(0.23 0.015 265);    /* slate-700 equivalent */
-  --color-surface-elevated: oklch(0.25 0.015 265); /* raised elements */
-  --color-surface-overlay: oklch(0.15 0.015 265 / 0.8); /* modals/overlays */
+  --color-surface: #1e293b;          /* slate-800 equivalent */
+  --color-surface-hover: #334155;    /* slate-700 equivalent */
+  --color-surface-elevated: #1e293b; /* raised elements */
+  --color-surface-overlay: rgba(15, 23, 42, 0.8); /* modals/overlays */
 
   /* ---------------------------------------------------------------------------
      Text Colors - Hierarchy for readability
      --------------------------------------------------------------------------- */
-  --color-text: oklch(0.98 0.005 265);             /* white - primary text */
-  --color-text-secondary: oklch(0.70 0.01 265);    /* gray-300 - secondary */
-  --color-text-muted: oklch(0.55 0.01 265);        /* gray-400 - muted/disabled */
-  --color-text-inverse: oklch(0.13 0.015 265);     /* dark text on light bg */
+  --color-text: #ffffff;             /* white - primary text */
+  --color-text-secondary: #cbd5e1;    /* gray-300 - secondary */
+  --color-text-muted: #94a3b8;        /* gray-400 - muted/disabled */
+  --color-text-inverse: #0f172a;     /* dark text on light bg */
 
   /* ---------------------------------------------------------------------------
      Border Colors - Subtle separation
      --------------------------------------------------------------------------- */
-  --color-border: oklch(0.30 0.015 265);           /* default border */
-  --color-border-subtle: oklch(0.25 0.015 265);    /* subtle division */
-  --color-border-focus: oklch(0.55 0.24 265);      /* focus rings (primary) */
+  --color-border: #334155;           /* default border */
+  --color-border-subtle: #1e293b;    /* subtle division */
+  --color-border-focus: #6366f1;      /* focus rings (primary) */
 
   /* ---------------------------------------------------------------------------
      Status Colors - Feedback and state indication
      --------------------------------------------------------------------------- */
-  --color-success: oklch(0.68 0.19 145);           /* green-500 */
-  --color-success-light: oklch(0.75 0.16 145);     /* green-400 */
-  --color-error: oklch(0.60 0.24 25);              /* red-500 */
-  --color-error-light: oklch(0.68 0.20 25);        /* red-400 */
-  --color-warning: oklch(0.75 0.18 85);            /* yellow-500 */
-  --color-warning-light: oklch(0.82 0.15 85);      /* yellow-400 */
-  --color-info: oklch(0.65 0.18 240);              /* blue-500 */
+  --color-success: #22c55e;           /* green-500 */
+  --color-success-light: #4ade80;     /* green-400 */
+  --color-error: #ef4444;              /* red-500 */
+  --color-error-light: #f87171;        /* red-400 */
+  --color-warning: #eab308;            /* yellow-500 */
+  --color-warning-light: #facc15;      /* yellow-400 */
+  --color-info: #3b82f6;              /* blue-500 */
 
   /* ---------------------------------------------------------------------------
      Audio Channel State Colors
      Visual indicators for translation channel status (Req 12.3)
      --------------------------------------------------------------------------- */
-  --color-state-inactive: oklch(0.45 0.01 265);    /* gray - channel off */
-  --color-state-active: oklch(0.68 0.19 145);      /* green - translating */
-  --color-state-error: oklch(0.60 0.24 25);        /* red - error state */
-  --color-state-connecting: oklch(0.75 0.18 85);   /* yellow - connecting */
+  --color-state-inactive: #64748b;    /* gray - channel off */
+  --color-state-active: #22c55e;      /* green - translating */
+  --color-state-error: #ef4444;        /* red - error state */
+  --color-state-connecting: #eab308;   /* yellow - connecting */
 
   /* ---------------------------------------------------------------------------
      Audio Level Meter Colors
      Volume indicator gradient (Req 12.4)
      --------------------------------------------------------------------------- */
-  --color-level-low: oklch(0.68 0.19 145);         /* green - safe level */
-  --color-level-mid: oklch(0.75 0.18 85);          /* yellow - moderate */
-  --color-level-high: oklch(0.60 0.24 25);         /* red - clipping */
+  --color-level-low: #22c55e;         /* green - safe level */
+  --color-level-mid: #eab308;          /* yellow - moderate */
+  --color-level-high: #ef4444;         /* red - clipping */
 
   /* ---------------------------------------------------------------------------
      Interactive Element Colors
      Buttons, inputs, and interactive components
      --------------------------------------------------------------------------- */
-  --color-input-bg: oklch(0.15 0.015 265);         /* input background */
-  --color-input-border: oklch(0.35 0.015 265);     /* input border */
-  --color-input-focus: oklch(0.55 0.24 265);       /* focus state */
-  --color-input-placeholder: oklch(0.50 0.01 265); /* placeholder text */
+  --color-input-bg: rgba(15, 23, 42, 0.8);         /* input background */
+  --color-input-border: #475569;     /* input border */
+  --color-input-focus: #6366f1;       /* focus state */
+  --color-input-placeholder: #94a3b8; /* placeholder text */
 
   /* ---------------------------------------------------------------------------
      Shadows - Depth and elevation
      --------------------------------------------------------------------------- */
-  --shadow-sm: 0 1px 2px 0 oklch(0 0 0 / 0.4);
-  --shadow-md: 0 4px 6px -1px oklch(0 0 0 / 0.5), 0 2px 4px -2px oklch(0 0 0 / 0.4);
-  --shadow-lg: 0 10px 15px -3px oklch(0 0 0 / 0.5), 0 4px 6px -4px oklch(0 0 0 / 0.4);
-  --shadow-xl: 0 20px 25px -5px oklch(0 0 0 / 0.5), 0 8px 10px -6px oklch(0 0 0 / 0.4);
-  --shadow-glow-primary: 0 0 20px oklch(0.55 0.24 265 / 0.3);
-  --shadow-glow-secondary: 0 0 20px oklch(0.70 0.18 195 / 0.3);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  --shadow-glow-primary: 0 0 20px rgba(99, 102, 241, 0.3);
+  --shadow-glow-secondary: 0 0 20px rgba(6, 182, 212, 0.3);
 
   /* ---------------------------------------------------------------------------
      Border Radius - Consistent rounding
@@ -114,25 +114,9 @@
   --radius-full: 9999px;    /* pill/circle */
 
   /* ---------------------------------------------------------------------------
-     Spacing Scale - Consistent spacing
+     Spacing removed to prevent breaking Tailwind v4 scales
      --------------------------------------------------------------------------- */
-  --spacing-xs: 0.25rem;    /* 4px */
-  --spacing-sm: 0.5rem;     /* 8px */
-  --spacing-md: 1rem;       /* 16px */
-  --spacing-lg: 1.5rem;     /* 24px */
-  --spacing-xl: 2rem;       /* 32px */
-  --spacing-2xl: 3rem;      /* 48px */
-
-  /* ---------------------------------------------------------------------------
-     Typography Scale
-     --------------------------------------------------------------------------- */
-  --font-size-xs: 0.75rem;    /* 12px */
-  --font-size-sm: 0.875rem;   /* 14px */
-  --font-size-base: 1rem;     /* 16px */
-  --font-size-lg: 1.125rem;   /* 18px */
-  --font-size-xl: 1.25rem;    /* 20px */
-  --font-size-2xl: 1.5rem;    /* 24px */
-  --font-size-3xl: 1.875rem;  /* 30px */
+  /* Typography overrides removed to prevent breaking Tailwind v4 text scales */
 
   /* ---------------------------------------------------------------------------
      Transitions - Smooth animations
@@ -142,8 +126,15 @@
   --transition-slow: 300ms ease;
 }
 
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-text);
+  }
+}
+
 /* =============================================================================
-   Base Styles
+   Component Styles
    ============================================================================= */
 
 html {
@@ -205,7 +196,7 @@ button,
 
 /* Glass effect for elevated surfaces */
 .glass {
-  background: oklch(0.18 0.015 265 / 0.8);
+  background: rgba(30, 41, 59, 0.8);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -235,10 +226,10 @@ button,
 /* Pulse animation for active/recording states */
 @keyframes pulse-glow {
   0%, 100% {
-    box-shadow: 0 0 0 0 oklch(0.68 0.19 145 / 0.4);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
   }
   50% {
-    box-shadow: 0 0 0 8px oklch(0.68 0.19 145 / 0);
+    box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
   }
 }
 

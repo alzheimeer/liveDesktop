@@ -11,12 +11,14 @@ use serde::{Deserialize, Serialize};
 
 /// Initial setup message sent on connection
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetupMessage {
     pub setup: SetupConfig,
 }
 
 /// Setup configuration for the translation session
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetupConfig {
     /// Model name (e.g., "models/gemini-3.5-live-translate-preview")
     pub model: String,
@@ -26,15 +28,29 @@ pub struct SetupConfig {
 
 /// Generation configuration for audio output
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenerationConfig {
     /// Response modalities (e.g., ["AUDIO"])
     pub response_modalities: Vec<String>,
     /// Speech configuration for TTS
-    pub speech_config: SpeechConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speech_config: Option<SpeechConfig>,
+    /// Translation configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub translation_config: Option<TranslationConfig>,
+}
+
+/// Translation configuration
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslationConfig {
+    pub target_language_code: String,
+    pub echo_target_language: bool,
 }
 
 /// Speech configuration for text-to-speech output
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpeechConfig {
     /// Voice configuration
     pub voice_config: VoiceConfig,
@@ -44,6 +60,7 @@ pub struct SpeechConfig {
 
 /// Voice configuration for TTS
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VoiceConfig {
     /// Prebuilt voice configuration
     pub prebuilt_voice_config: PrebuiltVoiceConfig,
@@ -51,6 +68,7 @@ pub struct VoiceConfig {
 
 /// Prebuilt voice selection
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrebuiltVoiceConfig {
     /// Voice name (e.g., "Aoede", "Puck", "Charon", "Fenrir", "Kore")
     pub voice_name: String,
@@ -62,12 +80,14 @@ pub struct PrebuiltVoiceConfig {
 
 /// Audio input message containing PCM data
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioInputMessage {
     pub realtime_input: RealtimeInput,
 }
 
 /// Real-time audio input wrapper
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RealtimeInput {
     /// Media chunks containing audio data
     pub media_chunks: Vec<MediaChunk>,
@@ -75,6 +95,7 @@ pub struct RealtimeInput {
 
 /// Single media chunk with encoded audio
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MediaChunk {
     /// MIME type (e.g., "audio/pcm;rate=16000")
     pub mime_type: String,
@@ -88,7 +109,7 @@ pub struct MediaChunk {
 
 /// Server response message
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ServerResponse {
     /// True when setup is complete
     pub setup_complete: Option<bool>,
@@ -100,6 +121,7 @@ pub struct ServerResponse {
 
 /// Server error information
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ServerError {
     /// Error code
     pub code: Option<i32>,
@@ -111,7 +133,7 @@ pub struct ServerError {
 
 /// Content from the server/model
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ServerContent {
     /// Model turn with generated content
     pub model_turn: Option<ModelTurn>,
@@ -123,7 +145,7 @@ pub struct ServerContent {
 
 /// Model turn containing generated parts
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ModelTurn {
     /// Parts of the response (audio, text, etc.)
     pub parts: Vec<Part>,
@@ -131,7 +153,7 @@ pub struct ModelTurn {
 
 /// Single part of a model response
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Part {
     /// Inline data (for audio responses)
     pub inline_data: Option<InlineData>,
@@ -141,6 +163,7 @@ pub struct Part {
 
 /// Inline data containing audio or other binary content
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InlineData {
     /// MIME type (e.g., "audio/pcm;rate=24000")
     pub mime_type: String,

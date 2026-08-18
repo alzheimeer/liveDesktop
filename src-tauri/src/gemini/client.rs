@@ -202,14 +202,18 @@ impl GeminiLiveClient {
                 model: format!("models/{}", MODEL),
                 generation_config: GenerationConfig {
                     response_modalities: vec!["AUDIO".to_string()],
-                    speech_config: SpeechConfig {
+                    speech_config: Some(SpeechConfig {
                         voice_config: VoiceConfig {
                             prebuilt_voice_config: PrebuiltVoiceConfig {
                                 voice_name,
                             },
                         },
                         language_code: self.config.target_lang.clone(),
-                    },
+                    }),
+                    translation_config: Some(crate::gemini::protocol::TranslationConfig {
+                        target_language_code: self.config.target_lang.clone(),
+                        echo_target_language: true,
+                    }),
                 },
             },
         };

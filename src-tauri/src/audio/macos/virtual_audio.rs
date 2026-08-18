@@ -554,7 +554,7 @@ impl VirtualAudioEndpoint {
             self.blackhole_device_id = Self::find_blackhole_device();
         }
 
-        match &self.blackhole_device_id {
+        match self.blackhole_device_id.clone() {
             Some(device) => {
                 tracing::info!(
                     "Starting BlackHole fallback: {} @ {}Hz (max latency: {}ms)",
@@ -572,7 +572,7 @@ impl VirtualAudioEndpoint {
                 self.current_latency_ms = 0;
 
                 // Open BlackHole device for playback
-                self.open_blackhole_for_playback(device)?;
+                self.open_blackhole_for_playback(&device)?;
 
                 tracing::info!(
                     "BlackHole fallback '{}' started - Requirement 5.3 compliant",

@@ -140,6 +140,11 @@ export function useAudioEngine(): UseAudioEngineReturn {
   
   // Track mounted state to avoid state updates after unmount
   const mountedRef = useRef(true);
+  
+  // React 18 Strict Mode compatibility: reset to true on mount
+  useEffect(() => {
+    mountedRef.current = true;
+  }, []);
 
   // Derived state
   const isTranslating = systemChannelState.type === 'active' || userChannelState.type === 'active';
@@ -153,15 +158,16 @@ export function useAudioEngine(): UseAudioEngineReturn {
   useEffect(() => {
     async function init() {
       try {
-        const [deviceList, state, vbStatus, virtualStatus] = await Promise.all([
-          enumerateAudioDevices(),
-          getAudioState(),
-          getVbCableStatus().catch(() => null), // VB-Cable may not be available on macOS
-          getVirtualAudioStatus().catch(() => null) // Virtual Audio may not be available on Windows
-        ]);
+        console.log('Fetching audio engine initial state...');
+        const p1 = enumerateAudioDevices().then(res => { console.log('enumerateAudioDevices DONE'); return res; });
+        const p2 = getAudioState().then(res => { console.log('getAudioState DONE'); return res; });
+        const p3 = getVbCableStatus().then(res => { console.log('getVbCableStatus DONE'); return res; }).catch(() => { console.log('getVbCableStatus FAILED'); return null; });
+        const p4 = getVirtualAudioStatus().then(res => { console.log('getVirtualAudioStatus DONE'); return res; }).catch(() => { console.log('getVirtualAudioStatus FAILED'); return null; });
+
+        const [deviceList, state, vbStatus, virtualStatus] = await Promise.all([p1, p2, p3, p4]);
+        console.log('All audio engine fetches complete!');
         
-        if (!mountedRef.current) return;
-        
+        // removed mountedRef check
         setDevices(deviceList);
         setSystemChannelState(state.systemChannel);
         setUserChannelState(state.userChannel);
@@ -246,7 +252,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
       setError(null);
       await startSystemChannel(config, token);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al iniciar canal de sistema';
+      const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Error al iniciar canal de sistema';
       setError(message);
       throw new Error(message);
     }
@@ -257,7 +263,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
       setError(null);
       await startUserChannel(config, token);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al iniciar canal de usuario';
+      const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Error al iniciar canal de usuario';
       setError(message);
       throw new Error(message);
     }
@@ -268,7 +274,7 @@ export function useAudioEngine(): UseAudioEngineReturn {
       setError(null);
       await stopChannel(channel);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Error al detener canal';
+      const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Error al detener canal';
       setError(message);
       throw new Error(message);
     }

@@ -562,7 +562,9 @@ pub async fn set_byok_key(api_key: String) -> Result<(), String> {
 /// * `Err(String)` - Error message if check failed
 #[command]
 pub async fn get_byok_key_exists() -> Result<bool, String> {
-    KeyringManager::has_byok_key().map_err(|e| e.to_string())
+    let result = KeyringManager::has_byok_key().map_err(|e| e.to_string());
+    tracing::info!("get_byok_key_exists result: {:?}", result);
+    result
 }
 
 /// Delete BYOK API key from OS keyring

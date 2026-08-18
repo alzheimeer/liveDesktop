@@ -17,6 +17,7 @@
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use serde::{Deserialize, Serialize};
+use crate::gemini::{GeminiSessionManager, GeminiConfig};
 
 #[cfg(target_os = "windows")]
 use crate::audio::windows::{wasapi, vbcable};
@@ -166,6 +167,10 @@ struct AudioChannelState {
     output_device_id: Option<String>,
     /// Gemini token for this channel
     token: Option<String>,
+    /// Channel to send shutdown signal to capture thread
+    capture_shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    /// Channel to send shutdown signal to playback thread
+    playback_shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
 }
 
 impl Default for AudioChannelState {
@@ -176,6 +181,8 @@ impl Default for AudioChannelState {
             input_device_id: None,
             output_device_id: None,
             token: None,
+            capture_shutdown_tx: None,
+            playback_shutdown_tx: None,
         }
     }
 }
@@ -193,6 +200,8 @@ pub struct AudioEngine {
     metrics_tx: Option<mpsc::Sender<AudioMetrics>>,
     /// Pause reason if any channel is paused
     pause_reason: Arc<RwLock<Option<PauseReason>>>,
+    /// Gemini session manager
+    gemini_sessions: Arc<RwLock<GeminiSessionManager>>,
 }
 
 impl AudioEngine {
@@ -207,6 +216,7 @@ impl AudioEngine {
             user_channel: Arc::new(RwLock::new(AudioChannelState::default())),
             metrics_tx,
             pause_reason: Arc::new(RwLock::new(None)),
+            gemini_sessions: Arc::new(RwLock::new(GeminiSessionManager::new())),
         }
     }
 
@@ -255,9 +265,79 @@ impl AudioEngine {
 
         #[cfg(target_os = "macos")]
         {
-            // TODO: Implement macOS device enumeration using CoreAudio/ScreenCaptureKit
-            tracing::warn!("macOS device enumeration not yet implemented");
-            Ok(vec![])
+            use cpal::traits::{DeviceTrait, HostTrait};
+            
+            let host = cpal::default_host();
+            let mut devices = Vec::new();
+            
+            let default_in = host.default_input_device().map(|d| d.name().unwrap_or_default());
+            let default_out = host.default_output_device().map(|d| d.name().unwrap_or_default());
+            
+            if let Ok(input_devices) = host.input_devices() {
+                for device in input_devices {
+                    if let Ok(name) = device.name() {
+                        let is_default = Some(name.clone()) == default_in;
+                        devices.push(AudioDevice {
+                            id: name.clone(),
+                            name: name.clone(),
+                            device_type: "input".to_string(),
+                            is_default,
+                        });
+                        
+                        let name_lower = name.to_lowercase();
+                        if name_lower.contains("blackhole") || name_lower.contains("vb-cable") || name_lower.contains("teams") {
+                            devices.push(AudioDevice {
+                                id: name.clone(),
+                                name: name.clone(),
+                                device_type: "loopback".to_string(),
+                                is_default: false, // will adjust later
+                            });
+                        }
+                    }
+                }
+            }
+            
+            if let Ok(output_devices) = host.output_devices() {
+                for device in output_devices {
+                    if let Ok(name) = device.name() {
+                        let is_default = Some(name.clone()) == default_out;
+                        devices.push(AudioDevice {
+                            id: name.clone(),
+                            name: name.clone(),
+                            device_type: "output".to_string(),
+                            is_default,
+                        });
+                    }
+                }
+            }
+            
+            // Deduplicate devices by ID and Type (sometimes cpal lists same device multiple times)
+            let mut unique_devices = Vec::new();
+            for dev in devices {
+                if !unique_devices.iter().any(|d: &AudioDevice| d.id == dev.id && d.device_type == dev.device_type) {
+                    unique_devices.push(dev);
+                }
+            }
+            
+            // En macOS 14+, ScreenCaptureKit permite captura nativa sin necesidad de loopback.
+            // Siempre agregamos un dispositivo virtual para la captura de sistema.
+            let has_loopback = unique_devices.iter().any(|d| d.device_type == "loopback");
+            if !has_loopback {
+                unique_devices.push(AudioDevice {
+                    id: "screencapturekit_native".to_string(),
+                    name: "Captura de Sistema (macOS Nativo)".to_string(),
+                    device_type: "loopback".to_string(),
+                    is_default: true,
+                });
+            } else {
+                // Set the first loopback as default if there is one
+                if let Some(first_loopback) = unique_devices.iter_mut().find(|d| d.device_type == "loopback") {
+                    first_loopback.is_default = true;
+                }
+            }
+
+            tracing::info!("Enumerated {} macOS audio devices", unique_devices.len());
+            Ok(unique_devices)
         }
 
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
@@ -305,11 +385,74 @@ impl AudioEngine {
         channel.output_device_id = Some(config.output_device.clone());
         channel.token = Some(token.to_string());
 
-        // TODO: Initialize WASAPI capture on input device
-        // TODO: Connect to Gemini WebSocket
-        // TODO: Initialize playback on output device
+        // Connect to Gemini WebSocket
+        let gemini_config = crate::gemini::GeminiConfig::new(
+            &config.source_lang,
+            &config.target_lang,
+            token,
+        );
         
-        // For now, mark as active - actual implementation will come with Gemini client
+        {
+            let mut sessions = self.gemini_sessions.write().await;
+            sessions.create_session(crate::gemini::ChannelType::System, gemini_config)
+                .await
+                .map_err(|e| format!("Failed to connect to Gemini: {}", e))?;
+        }
+
+        // Start CPAL capture on input device
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<i16>>(100);
+        let shutdown_tx = crate::audio::cpal_capture::start_mic_capture(config.input_device.clone(), tx)?;
+        
+        let gemini_sessions_clone = self.gemini_sessions.clone();
+        tokio::spawn(async move {
+            while let Some(samples) = rx.recv().await {
+                let mut sessions = gemini_sessions_clone.write().await;
+                if let Err(e) = sessions.send_audio(crate::gemini::ChannelType::System, &samples).await {
+                    tracing::error!("Error sending system audio to Gemini: {}", e);
+                    break;
+                }
+            }
+        });
+        
+        channel.capture_shutdown_tx = Some(shutdown_tx);
+        
+        // Start playback on output device
+        let rx_buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (playback_shutdown_tx, playback_rate) = crate::audio::cpal_playback::start_playback(config.output_device.clone(), rx_buffer.clone())?;
+        
+        let gemini_sessions_clone2 = self.gemini_sessions.clone();
+        tokio::spawn(async move {
+            loop {
+                let audio_opt = {
+                    let mut sessions = gemini_sessions_clone2.write().await;
+                    sessions.receive_audio(crate::gemini::ChannelType::System).await
+                };
+                
+                match audio_opt {
+                    Ok(Some(samples)) => {
+                        let resampled = if playback_rate != 24000 {
+                            crate::audio::resampler::resample_from_gemini_output(&samples, playback_rate)
+                        } else {
+                            samples
+                        };
+                        
+                        let mut buf = rx_buffer.lock().unwrap();
+                        buf.extend_from_slice(&resampled);
+                    },
+                    Ok(None) => {
+                        // Connection closed or no more audio
+                        break;
+                    },
+                    Err(e) => {
+                        tracing::error!("Error receiving system audio from Gemini: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+        
+        channel.playback_shutdown_tx = Some(playback_shutdown_tx);
+        
         channel.state = ChannelState::Active;
 
         tracing::info!("System channel started successfully");
@@ -380,11 +523,73 @@ impl AudioEngine {
         channel.output_device_id = Some(config.output_device.clone());
         channel.token = Some(token.to_string());
 
-        // TODO: Initialize microphone capture
-        // TODO: Connect to Gemini WebSocket
-        // TODO: Initialize VB-Cable output
+        // Connect to Gemini WebSocket
+        let gemini_config = crate::gemini::GeminiConfig::new(
+            &config.source_lang,
+            &config.target_lang,
+            token,
+        );
+        
+        {
+            let mut sessions = self.gemini_sessions.write().await;
+            sessions.create_session(crate::gemini::ChannelType::User, gemini_config)
+                .await
+                .map_err(|e| format!("Failed to connect to Gemini: {}", e))?;
+        }
 
-        // For now, mark as active
+        // Start CPAL capture on input device
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<i16>>(100);
+        let shutdown_tx = crate::audio::cpal_capture::start_mic_capture(config.input_device.clone(), tx)?;
+        
+        let gemini_sessions_clone = self.gemini_sessions.clone();
+        tokio::spawn(async move {
+            while let Some(samples) = rx.recv().await {
+                let mut sessions = gemini_sessions_clone.write().await;
+                if let Err(e) = sessions.send_audio(crate::gemini::ChannelType::User, &samples).await {
+                    tracing::error!("Error sending user audio to Gemini: {}", e);
+                    break;
+                }
+            }
+        });
+        
+        channel.capture_shutdown_tx = Some(shutdown_tx);
+        
+        // Start playback on output device (User channel plays back to VB-Cable or normal device)
+        let rx_buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (playback_shutdown_tx, playback_rate) = crate::audio::cpal_playback::start_playback(config.output_device.clone(), rx_buffer.clone())?;
+        
+        let gemini_sessions_clone2 = self.gemini_sessions.clone();
+        tokio::spawn(async move {
+            loop {
+                let audio_opt = {
+                    let mut sessions = gemini_sessions_clone2.write().await;
+                    sessions.receive_audio(crate::gemini::ChannelType::User).await
+                };
+                
+                match audio_opt {
+                    Ok(Some(samples)) => {
+                        let resampled = if playback_rate != 24000 {
+                            crate::audio::resampler::resample_from_gemini_output(&samples, playback_rate)
+                        } else {
+                            samples
+                        };
+                        
+                        let mut buf = rx_buffer.lock().unwrap();
+                        buf.extend_from_slice(&resampled);
+                    },
+                    Ok(None) => {
+                        break;
+                    },
+                    Err(e) => {
+                        tracing::error!("Error receiving user audio from Gemini: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+        
+        channel.playback_shutdown_tx = Some(playback_shutdown_tx);
+        
         channel.state = ChannelState::Active;
 
         tracing::info!("User channel started successfully");
@@ -412,9 +617,21 @@ impl AudioEngine {
 
                 tracing::info!("Stopping system channel");
 
-                // TODO: Stop WASAPI capture
-                // TODO: Close Gemini WebSocket
-                // TODO: Stop playback
+                // Stop capture thread if it exists
+                if let Some(tx) = channel.capture_shutdown_tx.take() {
+                    let _ = tx.send(());
+                }
+
+                // Close Gemini WebSocket
+                let mut sessions = self.gemini_sessions.write().await;
+                if let Err(e) = sessions.close_session(crate::gemini::ChannelType::System).await {
+                    tracing::error!("Error closing system Gemini session: {}", e);
+                }
+
+                // Stop playback
+                if let Some(tx) = channel.playback_shutdown_tx.take() {
+                    let _ = tx.send(());
+                }
 
                 channel.state = ChannelState::Inactive;
                 channel.config = None;
@@ -433,9 +650,21 @@ impl AudioEngine {
 
                 tracing::info!("Stopping user channel");
 
-                // TODO: Stop microphone capture
-                // TODO: Close Gemini WebSocket
-                // TODO: Stop VB-Cable output
+                // Stop microphone capture
+                if let Some(tx) = channel.capture_shutdown_tx.take() {
+                    let _ = tx.send(());
+                }
+
+                // Close Gemini WebSocket
+                let mut sessions = self.gemini_sessions.write().await;
+                if let Err(e) = sessions.close_session(crate::gemini::ChannelType::User).await {
+                    tracing::error!("Error closing user Gemini session: {}", e);
+                }
+
+                // Stop VB-Cable output (playback)
+                if let Some(tx) = channel.playback_shutdown_tx.take() {
+                    let _ = tx.send(());
+                }
 
                 channel.state = ChannelState::Inactive;
                 channel.config = None;

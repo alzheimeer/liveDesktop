@@ -157,7 +157,7 @@ impl KeyringManager {
             && api_key.len() <= 256
             && api_key
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
     }
 }
 

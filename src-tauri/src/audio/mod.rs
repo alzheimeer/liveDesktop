@@ -19,6 +19,8 @@ pub mod playback;
 pub mod resampler;
 pub mod chunker;
 pub mod test_tone;
+pub mod cpal_capture;
+pub mod cpal_playback;
 
 #[cfg(target_os = "windows")]
 pub mod windows;

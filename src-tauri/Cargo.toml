@@ -97,6 +97,7 @@ windows = { version = "0.52", optional = true, features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit-sys = { version = "0.2", optional = true }
 coreaudio-rs = { version = "0.11", optional = true }
+cpal = "0.15"
 
 [features]
 default = ["audio", "tauri-plugins"]

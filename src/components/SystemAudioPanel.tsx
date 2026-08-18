@@ -137,6 +137,14 @@ export function SystemAudioPanel() {
   const displayError = localError || audioError;
   const isActive = systemChannelState.type === 'active';
   
+  console.log('SystemAudioPanel disabled state:', { 
+    isStarting, 
+    audioLoading, 
+    canTranslate, 
+    hasUser: !!user, 
+    hasByokKey 
+  });
+  
   return (
     <div className="bg-surface rounded-xl p-6 border border-border">
       {/* Header */}

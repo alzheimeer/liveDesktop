@@ -134,6 +134,35 @@ export function useAuth(): UseAuthReturn {
   // Track mounted state to avoid state updates after unmount
   const mountedRef = useRef(true);
   
+  // React 18 Strict Mode compatibility: reset to true on mount
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    const onByokChanged = async (e: Event) => {
+      try {
+        if (e instanceof CustomEvent && typeof e.detail?.hasKey === 'boolean') {
+          if (mountedRef.current) {
+            setHasByokKey(e.detail.hasKey);
+          }
+          return;
+        }
+        
+        const byokExists = await getByokKeyExists();
+        if (mountedRef.current) {
+          setHasByokKey(byokExists);
+        }
+      } catch (err) {
+        console.warn("Could not check BYOK key status:", err);
+      }
+    };
+    
+    window.addEventListener('byok_changed', onByokChanged);
+    
+    return () => {
+      window.removeEventListener('byok_changed', onByokChanged);
+    };
+  }, []);
+  
   // Track if session checker was started
   const checkerStartedRef = useRef(false);
 
@@ -390,6 +419,7 @@ export function useAuth(): UseAuthReturn {
       if (mountedRef.current) {
         setHasByokKey(true);
       }
+      window.dispatchEvent(new CustomEvent('byok_changed', { detail: { hasKey: true } }));
       return true;
     } catch (err) {
       if (mountedRef.current) {
@@ -432,6 +462,8 @@ export function useAuth(): UseAuthReturn {
       if (mountedRef.current) {
         setHasByokKey(false);
       }
+      window.dispatchEvent(new CustomEvent('byok_changed', { detail: { hasKey: false } }));
+      return true;
     } catch (err) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : 'Error al eliminar API key');

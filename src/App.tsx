@@ -19,6 +19,7 @@ import { UserMicPanel } from "./components/UserMicPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useConfig } from "./hooks/useConfig";
+import { useAuth } from "./hooks/useAuth";
 import { configExists } from "./ipc/commands";
 import type { AppConfig } from "./ipc/types";
 
@@ -28,6 +29,9 @@ function App() {
   const [checkingConfig, setCheckingConfig] = useState(true);
   const { loading, error, clearError, isTranslating } = useAudioEngine();
   const { updateConfig } = useConfig();
+  const { saveByokKey, hasByokKey, error: authError, clearError: clearAuthError } = useAuth();
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [savingKey, setSavingKey] = useState(false);
   
   // Check if configuration exists on mount (Requirement 13.1)
   useEffect(() => {
@@ -171,7 +175,10 @@ function App() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-text">Configuración</h2>
               <button
-                onClick={handleSettingsClose}
+                onClick={() => {
+                  clearAuthError();
+                  handleSettingsClose();
+                }}
                 className="text-text-secondary hover:text-text transition-colors p-1"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -179,9 +186,51 @@ function App() {
                 </svg>
               </button>
             </div>
-            <p className="text-text-secondary text-sm">
+            <p className="text-text-secondary text-sm mb-4">
               El panel de configuración completo se implementará en la tarea 21 (Onboarding Wizard).
             </p>
+            <div className="mt-4 border-t border-border pt-4">
+              <h3 className="text-md font-medium text-text mb-2">API Key de Gemini (BYOK)</h3>
+              <p className="text-xs text-text-secondary mb-3">
+                Ingresa tu VITE_GEMINI_API_KEY para habilitar la traducción local.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  placeholder={hasByokKey ? "••••••••••••••••" : "AIzaSy..."}
+                  className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
+                />
+                <button
+                  onClick={async () => {
+                    if (!apiKeyInput) return;
+                    setSavingKey(true);
+                    clearAuthError();
+                    try {
+                      const success = await saveByokKey(apiKeyInput);
+                      if (success) {
+                        setApiKeyInput('');
+                        handleSettingsClose();
+                      }
+                    } catch (e) {
+                      console.error("Failed to save API key", e);
+                    } finally {
+                      setSavingKey(false);
+                    }
+                  }}
+                  disabled={savingKey || !apiKeyInput}
+                  className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                >
+                  {savingKey ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
+              {authError && (
+                <div className="mt-2 text-xs text-error">
+                  {authError}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
