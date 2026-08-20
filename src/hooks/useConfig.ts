@@ -21,11 +21,25 @@ const defaultConfig: AppConfig = {
   },
 };
 
+const configEventEmitter = new EventTarget();
+
 export function useConfig() {
   const [config, setConfig] = useState<AppConfig>(defaultConfig);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Listen for global config updates
+  useEffect(() => {
+    const handleConfigUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent<AppConfig>;
+      setConfig(customEvent.detail);
+    };
+    configEventEmitter.addEventListener('configUpdated', handleConfigUpdate);
+    return () => {
+      configEventEmitter.removeEventListener('configUpdated', handleConfigUpdate);
+    };
+  }, []);
 
   // Load initial config
   useEffect(() => {
@@ -56,6 +70,8 @@ export function useConfig() {
       setError(null);
       await saveConfigCommand(config);
       setHasChanges(false);
+      // Notify other hooks of the saved config
+      configEventEmitter.dispatchEvent(new CustomEvent('configUpdated', { detail: config }));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save config');
     } finally {

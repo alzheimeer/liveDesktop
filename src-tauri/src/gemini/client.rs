@@ -18,17 +18,20 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{protocol::Message, Error as WsError},
 };
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use futures_util::stream::{SplitSink, SplitStream};
 
 use super::protocol::{
     AudioInputMessage, MediaChunk, RealtimeInput, ServerResponse, SetupConfig, SetupMessage,
-    GenerationConfig, SpeechConfig, VoiceConfig, PrebuiltVoiceConfig,
+    GenerationConfig, SpeechConfig, VoiceConfig, PrebuiltVoiceConfig, SystemInstruction, TextPart,
 };
 
 /// WebSocket URL for Gemini Live API v1alpha
 pub const GEMINI_WS_URL: &str = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent";
 
-/// Model name for live translation
-pub const MODEL: &str = "gemini-3.5-live-translate-preview";
+/// Model name for live translation (standard model, works with all API keys)
+pub const MODEL: &str = "gemini-2.0-flash-live-001";
 
 /// Alternative model for fallback
 pub const MODEL_FALLBACK: &str = "gemini-2.0-flash-live-001";
@@ -127,11 +130,14 @@ type WsStream = tokio_tungstenite::WebSocketStream<
 ///
 /// Handles bidirectional streaming communication with Gemini Live API
 /// for real-time voice-to-voice translation.
+#[derive(Clone)]
 pub struct GeminiLiveClient {
     /// Configuration for the connection
     config: GeminiConfig,
-    /// WebSocket stream (Some when connected)
-    ws_stream: Option<WsStream>,
+    /// WebSocket sender half
+    ws_sender: Option<Arc<Mutex<SplitSink<WsStream, Message>>>>,
+    /// WebSocket receiver half
+    ws_receiver: Option<Arc<Mutex<SplitStream<WsStream>>>>,
     /// Whether the setup has been completed
     setup_complete: bool,
 }
@@ -143,7 +149,8 @@ impl GeminiLiveClient {
     pub fn new(config: GeminiConfig) -> Self {
         Self {
             config,
-            ws_stream: None,
+            ws_sender: None,
+            ws_receiver: None,
             setup_complete: false,
         }
     }
@@ -174,7 +181,9 @@ impl GeminiLiveClient {
             .map_err(|e| self.map_ws_error(e))?;
 
         let (ws_stream, _response) = result;
-        self.ws_stream = Some(ws_stream);
+        let (sender, receiver) = ws_stream.split();
+        self.ws_sender = Some(Arc::new(Mutex::new(sender)));
+        self.ws_receiver = Some(Arc::new(Mutex::new(receiver)));
 
         // Send setup message
         self.send_setup_message().await?;
@@ -193,9 +202,21 @@ impl GeminiLiveClient {
     }
 
     /// Send the setup message to configure the translation session
-    async fn send_setup_message(&mut self) -> Result<(), GeminiError> {
+    async fn send_setup_message(&self) -> Result<(), GeminiError> {
         let voice_name = self.config.voice_name.clone()
             .unwrap_or_else(|| "Aoede".to_string());
+
+        // Build system instruction for translation
+        let system_instruction = SystemInstruction {
+            parts: vec![TextPart {
+                text: format!(
+                    "You are a real-time interpreter. Listen to the audio and translate it from {} to {} in real-time. \
+                     Speak only the translated text. Do not add explanations, annotations, or anything other than the translation itself. \
+                     Maintain the natural speaking pace and tone.",
+                    self.config.source_lang, self.config.target_lang
+                ),
+            }],
+        };
 
         let setup_msg = SetupMessage {
             setup: SetupConfig {
@@ -210,11 +231,9 @@ impl GeminiLiveClient {
                         },
                         language_code: self.config.target_lang.clone(),
                     }),
-                    translation_config: Some(crate::gemini::protocol::TranslationConfig {
-                        target_language_code: self.config.target_lang.clone(),
-                        echo_target_language: true,
-                    }),
+                    translation_config: None,
                 },
+                system_instruction: Some(system_instruction),
             },
         };
 
@@ -233,16 +252,64 @@ impl GeminiLiveClient {
 
         let receive_future = async {
             loop {
-                if let Some(msg) = self.receive_message().await? {
-                    if let Message::Text(text) = msg {
-                        let response: ServerResponse = serde_json::from_str(&text)
-                            .map_err(|e| GeminiError::InvalidResponse(format!("Parse error: {}", e)))?;
+                match self.receive_message().await? {
+                    Some(Message::Text(text)) => {
+                        tracing::debug!(target: "gemini", "Received text message during setup: {}", text);
+                        let response: ServerResponse = match serde_json::from_str(&text) {
+                            Ok(res) => res,
+                            Err(e) => {
+                                tracing::error!(target: "gemini", "Parse error during setup: {}", e);
+                                return Err(GeminiError::InvalidResponse(format!("Parse error: {}", e)));
+                            }
+                        };
 
-                        if response.setup_complete == Some(true) {
+                        if let Some(err) = response.error {
+                            tracing::error!(target: "gemini", "Server returned error during setup: {:?}", err);
+                            return Err(GeminiError::SetupFailed(format!("Server error: {:?}", err)));
+                        }
+
+                        if response.setup_complete.is_some() {
                             self.setup_complete = true;
                             tracing::debug!(target: "gemini", "Setup complete received");
                             return Ok(());
                         }
+                    }
+                    Some(Message::Binary(bin)) => {
+                        let text = String::from_utf8_lossy(&bin).to_string();
+                        tracing::debug!(target: "gemini", "Received binary message during setup: {}", text);
+                        let response: ServerResponse = match serde_json::from_str(&text) {
+                            Ok(res) => res,
+                            Err(e) => {
+                                tracing::error!(target: "gemini", "Parse error during setup: {}", e);
+                                return Err(GeminiError::InvalidResponse(format!("Parse error: {}", e)));
+                            }
+                        };
+
+                        if let Some(err) = response.error {
+                            tracing::error!(target: "gemini", "Server returned error during setup: {:?}", err);
+                            return Err(GeminiError::SetupFailed(format!("Server error: {:?}", err)));
+                        }
+
+                        if response.setup_complete.is_some() {
+                            self.setup_complete = true;
+                            tracing::debug!(target: "gemini", "Setup complete received");
+                            return Ok(());
+                        }
+                    }
+                    Some(Message::Close(close_frame)) => {
+                        tracing::error!(target: "gemini", "Connection closed by server during setup: {:?}", close_frame);
+                        if let Some(frame) = close_frame {
+                            return Err(GeminiError::SetupFailed(format!("Server closed connection: {} ({})", frame.reason, frame.code)));
+                        } else {
+                            return Err(GeminiError::SetupFailed("Server closed connection without reason".to_string()));
+                        }
+                    }
+                    Some(msg) => {
+                        tracing::debug!(target: "gemini", "Ignored non-text message during setup: {:?}", msg);
+                    }
+                    None => {
+                        tracing::error!(target: "gemini", "Connection closed unexpectedly during setup");
+                        return Err(GeminiError::ConnectionClosed);
                     }
                 }
             }
@@ -262,38 +329,60 @@ impl GeminiLiveClient {
     /// # Requirements
     ///
     /// Audio should be sent in 20ms chunks (320 samples = 640 bytes).
-    pub async fn send_audio(&mut self, samples: &[i16]) -> Result<(), GeminiError> {
-        if !self.is_connected() {
+    pub async fn send_audio(&self, pcm_data: &[i16]) -> Result<(), GeminiError> {
+        if self.ws_sender.is_none() {
             return Err(GeminiError::ConnectionClosed);
         }
 
-        if !self.setup_complete {
-            return Err(GeminiError::SetupFailed("Setup not complete".to_string()));
+        // Convert i16 samples to little-endian bytes
+        let mut byte_data = Vec::with_capacity(pcm_data.len() * 2);
+        for &sample in pcm_data {
+            byte_data.extend_from_slice(&sample.to_le_bytes());
         }
 
-        // Convert samples to bytes (little-endian PCM16)
-        let bytes: Vec<u8> = samples
-            .iter()
-            .flat_map(|s| s.to_le_bytes())
-            .collect();
-
-        // Base64 encode the audio data
-        let encoded = BASE64.encode(&bytes);
-
-        // Create audio input message
-        let audio_msg = AudioInputMessage {
+        // Encode as base64
+        let base64_audio = BASE64.encode(&byte_data);
+        
+        let msg = AudioInputMessage {
             realtime_input: RealtimeInput {
                 media_chunks: vec![MediaChunk {
                     mime_type: AUDIO_MIME_TYPE_INPUT.to_string(),
-                    data: encoded,
+                    data: base64_audio,
                 }],
             },
         };
 
-        let json = serde_json::to_string(&audio_msg)
-            .map_err(|e| GeminiError::SendError(format!("Serialize error: {}", e)))?;
+        let json = serde_json::to_string(&msg)
+            .map_err(|e| GeminiError::SendError(format!("Failed to serialize audio: {}", e)))?;
 
-        self.send_text(&json).await
+        self.send_text(&json).await?;
+        Ok(())
+    }
+
+    /// Send a text message over the WebSocket
+    async fn send_text(&self, text: &str) -> Result<(), GeminiError> {
+        if let Some(sender_mtx) = &self.ws_sender {
+            let mut sender = sender_mtx.lock().await;
+            sender.send(Message::Text(text.to_string())).await.map_err(|e| self.map_ws_error(e))?;
+            Ok(())
+        } else {
+            Err(GeminiError::ConnectionClosed)
+        }
+    }
+
+    /// Receive a raw message from the WebSocket
+    pub async fn receive_message(&self) -> Result<Option<Message>, GeminiError> {
+        if let Some(receiver_mtx) = &self.ws_receiver {
+            let mut receiver = receiver_mtx.lock().await;
+            if let Some(msg_result) = receiver.next().await {
+                let msg = msg_result.map_err(|e| self.map_ws_error(e))?;
+                Ok(Some(msg))
+            } else {
+                Ok(None) // Stream closed
+            }
+        } else {
+            Err(GeminiError::ConnectionClosed)
+        }
     }
 
     /// Receive translated audio from Gemini Live
@@ -303,45 +392,22 @@ impl GeminiLiveClient {
     /// - `Ok(Some(samples))` - Translated audio samples at 24kHz PCM16
     /// - `Ok(None)` - No audio available (turn not complete, or other message type)
     /// - `Err(_)` - Connection or parsing error
-    pub async fn receive_audio(&mut self) -> Result<Option<Vec<i16>>, GeminiError> {
-        if !self.is_connected() {
-            return Err(GeminiError::ConnectionClosed);
-        }
-
+    pub async fn receive_audio(&self) -> Result<Option<Vec<i16>>, GeminiError> {
         let msg = self.receive_message().await?;
-
+        
         match msg {
             Some(Message::Text(text)) => {
-                let response: ServerResponse = serde_json::from_str(&text)
-                    .map_err(|e| GeminiError::InvalidResponse(format!("Parse error: {}", e)))?;
-
-                // Extract audio from server content
-                if let Some(content) = response.server_content {
-                    if let Some(model_turn) = content.model_turn {
-                        for part in model_turn.parts {
-                            if let Some(inline_data) = part.inline_data {
-                                if inline_data.mime_type.starts_with("audio/pcm") {
-                                    // Decode base64 audio
-                                    let bytes = BASE64.decode(&inline_data.data)
-                                        .map_err(|e| GeminiError::ReceiveError(format!("Base64 decode error: {}", e)))?;
-
-                                    // Convert bytes to samples (little-endian PCM16)
-                                    let samples: Vec<i16> = bytes
-                                        .chunks_exact(2)
-                                        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
-                                        .collect();
-
-                                    return Ok(Some(samples));
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Ok(None)
+                Self::parse_server_response(&text)
             }
             Some(Message::Binary(data)) => {
-                // Some responses may come as binary PCM directly
+                // Gemini sometimes sends JSON over binary frames. Try to parse as JSON first.
+                if let Ok(text) = String::from_utf8(data.clone()) {
+                    if let Ok(result) = Self::parse_server_response(&text) {
+                        return Ok(result);
+                    }
+                }
+                
+                // Fallback for raw PCM if the server ever sends it directly
                 if data.len() % 2 == 0 {
                     let samples: Vec<i16> = data
                         .chunks_exact(2)
@@ -352,20 +418,49 @@ impl GeminiLiveClient {
                 Ok(None)
             }
             Some(Message::Close(_)) => {
-                self.ws_stream = None;
-                self.setup_complete = false;
                 Err(GeminiError::ConnectionClosed)
             }
             _ => Ok(None),
         }
     }
 
+    fn parse_server_response(text: &str) -> Result<Option<Vec<i16>>, GeminiError> {
+        let response: ServerResponse = serde_json::from_str(text)
+            .map_err(|e| GeminiError::InvalidResponse(format!("Parse error: {}", e)))?;
+
+        // Extract audio from server content
+        if let Some(content) = response.server_content {
+            if let Some(model_turn) = content.model_turn {
+                for part in model_turn.parts {
+                    if let Some(inline_data) = part.inline_data {
+                        if inline_data.mime_type.starts_with("audio/pcm") {
+                            // Decode base64 audio
+                            let bytes = BASE64.decode(&inline_data.data)
+                                .map_err(|e| GeminiError::ReceiveError(format!("Base64 decode error: {}", e)))?;
+
+                            // Convert bytes to samples (little-endian PCM16)
+                            let samples: Vec<i16> = bytes
+                                .chunks_exact(2)
+                                .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]))
+                                .collect();
+
+                            return Ok(Some(samples));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(None)
+    }
+
+
     /// Receive audio with a timeout
     ///
     /// # Arguments
     ///
     /// * `timeout_ms` - Maximum time to wait for audio in milliseconds
-    pub async fn receive_audio_timeout(&mut self, timeout_ms: u64) -> Result<Option<Vec<i16>>, GeminiError> {
+    pub async fn receive_audio_timeout(&self, timeout_ms: u64) -> Result<Option<Vec<i16>>, GeminiError> {
         match timeout(Duration::from_millis(timeout_ms), self.receive_audio()).await {
             Ok(result) => result,
             Err(_) => Ok(None), // Timeout returns None, not an error
@@ -374,19 +469,21 @@ impl GeminiLiveClient {
 
     /// Close the connection gracefully
     pub async fn close(&mut self) -> Result<(), GeminiError> {
-        if let Some(ref mut ws) = self.ws_stream {
-            let _ = ws.close(None).await;
+        if let Some(sender_mtx) = &self.ws_sender {
+            let mut sender = sender_mtx.lock().await;
+            let _ = sender.send(Message::Close(None)).await;
         }
-        self.ws_stream = None;
+        self.ws_sender = None;
+        self.ws_receiver = None;
         self.setup_complete = false;
-
+        
         tracing::info!(target: "gemini", "Connection closed");
         Ok(())
     }
 
     /// Check if the client is connected
     pub fn is_connected(&self) -> bool {
-        self.ws_stream.is_some()
+        self.ws_sender.is_some()
     }
 
     /// Check if setup has been completed
@@ -409,33 +506,7 @@ impl GeminiLiveClient {
     // ========================================
 
     /// Send a text message through the WebSocket
-    async fn send_text(&mut self, text: &str) -> Result<(), GeminiError> {
-        if let Some(ref mut ws) = self.ws_stream {
-            ws.send(Message::Text(text.to_string()))
-                .await
-                .map_err(|e| GeminiError::SendError(format!("WebSocket send error: {}", e)))?;
-            Ok(())
-        } else {
-            Err(GeminiError::ConnectionClosed)
-        }
-    }
 
-    /// Receive a message from the WebSocket
-    async fn receive_message(&mut self) -> Result<Option<Message>, GeminiError> {
-        if let Some(ref mut ws) = self.ws_stream {
-            match ws.next().await {
-                Some(Ok(msg)) => Ok(Some(msg)),
-                Some(Err(e)) => Err(GeminiError::ReceiveError(format!("WebSocket receive error: {}", e))),
-                None => {
-                    self.ws_stream = None;
-                    self.setup_complete = false;
-                    Err(GeminiError::ConnectionClosed)
-                }
-            }
-        } else {
-            Err(GeminiError::ConnectionClosed)
-        }
-    }
 
     /// Map WebSocket errors to GeminiError
     fn map_ws_error(&self, error: WsError) -> GeminiError {
@@ -460,7 +531,8 @@ impl Drop for GeminiLiveClient {
     fn drop(&mut self) {
         // Note: We can't do async cleanup in Drop, but the WebSocket
         // will be closed when dropped anyway
-        self.ws_stream = None;
+        self.ws_sender = None;
+        self.ws_receiver = None;
         self.setup_complete = false;
     }
 }

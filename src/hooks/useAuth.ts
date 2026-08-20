@@ -463,7 +463,6 @@ export function useAuth(): UseAuthReturn {
         setHasByokKey(false);
       }
       window.dispatchEvent(new CustomEvent('byok_changed', { detail: { hasKey: false } }));
-      return true;
     } catch (err) {
       if (mountedRef.current) {
         setError(err instanceof Error ? err.message : 'Error al eliminar API key');

@@ -24,7 +24,7 @@ tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-notification = { version = "2", optional = true }
 
 # Async runtime
-tokio = { version = "1.35", features = ["full"] }
+tokio = { version = "1.35", features = ["full", "macros"] }
 futures-util = "0.3"
 
 # WebSocket for Gemini Live
@@ -95,13 +95,12 @@ windows = { version = "0.52", optional = true, features = [
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-screencapturekit-sys = { version = "0.2", optional = true }
 coreaudio-rs = { version = "0.11", optional = true }
 cpal = "0.15"
 
 [features]
 default = ["audio", "tauri-plugins"]
-audio = ["dep:windows", "dep:rubato", "dep:hound"]
+audio = ["dep:rubato", "dep:hound", "dep:coreaudio-rs"]
 sentry = ["dep:sentry"]
 # Feature to include heavy Tauri plugins (disabled for testing)
 tauri-plugins = ["dep:tauri-plugin-dialog", "dep:tauri-plugin-notification"]
@@ -121,3 +120,5 @@ opt-level = "z"
 # Abort on panic (smaller binary, no unwinding)
 panic = "abort"
 
+
+audio = []

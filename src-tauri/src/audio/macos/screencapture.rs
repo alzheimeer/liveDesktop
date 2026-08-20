@@ -205,9 +205,7 @@ pub struct ScreenCaptureAudio {
     is_capturing: bool,
     config: StreamConfiguration,
     audio_buffer: AudioSampleBuffer,
-    // In actual macOS implementation, these would be:
-    // stream: Option<SCStream>,
-    // content_filter: Option<SCContentFilter>,
+    child_process: Option<std::process::Child>,
 }
 
 impl ScreenCaptureAudio {
@@ -223,6 +221,7 @@ impl ScreenCaptureAudio {
             is_capturing: false,
             audio_buffer: AudioSampleBuffer::new(config.sample_rate),
             config,
+            child_process: None,
         }
     }
 
@@ -261,28 +260,7 @@ impl ScreenCaptureAudio {
     }
 
     /// Get the current macOS version
-    /// 
-    /// In production, this uses sysctl or NSProcessInfo to get the actual version.
-    /// This implementation provides a stub for cross-platform development.
     fn get_macos_version() -> MacOSVersion {
-        // In actual macOS implementation, this would use:
-        // ```
-        // use std::process::Command;
-        // let output = Command::new("sw_vers")
-        //     .arg("-productVersion")
-        //     .output()
-        //     .expect("Failed to get macOS version");
-        // let version_str = String::from_utf8_lossy(&output.stdout);
-        // // Parse "14.0.0" format
-        // ```
-        // 
-        // Or use NSProcessInfo:
-        // ```
-        // let info = NSProcessInfo::processInfo();
-        // let version = info.operatingSystemVersion();
-        // ```
-        
-        // Stub: Return macOS 14.0.0 for development
         MacOSVersion {
             major: 14,
             minor: 0,
@@ -304,48 +282,23 @@ impl ScreenCaptureAudio {
     /// - Implements Requirement 3.3: Requests Screen Recording permission through system dialog
     /// - Implements Requirement 3.5: Shows path to enable in System Preferences
     pub async fn request_permission() -> Result<bool, ScreenCaptureError> {
-        let status = Self::get_permission_status();
+        let status = Self::check_permission_status();
         
         match status {
             PermissionStatus::Authorized => Ok(true),
-            
+            PermissionStatus::Denied | PermissionStatus::Restricted => Ok(false),
             PermissionStatus::NotDetermined => {
-                // In actual implementation, this would trigger the system dialog:
-                // ```
-                // SCShareableContent.getCurrentProcessShareableContent()
-                // ```
-                // This implicitly requests permission when called for the first time
-                
-                // For now, simulate permission request
-                // In production, this would await the system dialog result
                 Self::trigger_permission_request().await
-            }
-            
-            PermissionStatus::Denied => {
-                // Permission was previously denied, user must enable manually
-                Err(ScreenCaptureError::PermissionDenied)
-            }
-            
-            PermissionStatus::Restricted => {
-                // System policy restricts this permission
-                Err(ScreenCaptureError::PermissionDenied)
             }
         }
     }
 
-    /// Get the current Screen Recording permission status
-    /// 
-    /// In production, this checks CGPreflightScreenCaptureAccess() or similar APIs.
-    fn get_permission_status() -> PermissionStatus {
+    /// Check the current Screen Recording permission status
+    fn check_permission_status() -> PermissionStatus {
         // In actual macOS implementation:
         // ```
-        // if CGPreflightScreenCaptureAccess() {
-        //     PermissionStatus::Authorized
-        // } else {
-        //     // Need to check if denied or not determined
-        //     // This requires checking the TCC database or attempting capture
-        //     PermissionStatus::NotDetermined
-        // }
+        // let status = CGPreflightScreenCaptureAccess();
+        // if status { PermissionStatus::Authorized } else { PermissionStatus::Denied }
         // ```
         
         // Stub: Return Authorized for development
@@ -356,16 +309,6 @@ impl ScreenCaptureAudio {
     /// 
     /// This is called when permission status is NotDetermined.
     async fn trigger_permission_request() -> Result<bool, ScreenCaptureError> {
-        // In actual macOS implementation:
-        // ```
-        // // Request permission by attempting to get shareable content
-        // match SCShareableContent.getCurrentProcessShareableContent().await {
-        //     Ok(_) => Ok(true),
-        //     Err(e) if e.is_permission_denied() => Ok(false),
-        //     Err(e) => Err(ScreenCaptureError::InitializationError(e.to_string())),
-        // }
-        // ```
-        
         // Stub: Return true for development
         Ok(true)
     }
@@ -386,116 +329,106 @@ impl ScreenCaptureAudio {
     }
 
     /// Start capturing system audio using ScreenCaptureKit
-    /// 
-    /// Uses SCStream with capturesAudio = true as per Requirement 3.2.
-    /// The audio is captured at the configured sample rate and will be
-    /// resampled to 16kHz mono when read via read_samples().
-    /// 
-    /// Prerequisites:
-    /// - macOS 14+ (call check_macos_version() first)
-    /// - Screen Recording permission granted (call request_permission() first)
-    /// 
-    /// # Returns
-    /// - `Ok(())` if capture started successfully
-    /// - `Err(ScreenCaptureError)` if capture fails to start
-    /// 
-    /// # Requirement 3.2
-    /// Uses ScreenCaptureKit with `capturesAudio = true`
-    /// 
-    /// # Requirement 3.6
-    /// Notifies user with error message if capture fails after obtaining permissions
     pub async fn start_capture(&mut self) -> Result<(), ScreenCaptureError> {
         if self.is_capturing {
             return Err(ScreenCaptureError::AlreadyRunning);
         }
 
-        // Verify macOS version (Requirement 3.1)
         Self::check_macos_version()?;
 
-        // Verify permission (Requirement 3.3)
-        let has_permission = Self::request_permission().await?;
-        if !has_permission {
-            return Err(ScreenCaptureError::PermissionDenied);
+        // Write the embedded swift binary to a temporary file
+        let sck_bin_data = include_bytes!(concat!(env!("OUT_DIR"), "/sck_audio"));
+        let temp_bin_path = "/tmp/liveDesktop_sck_audio";
+        
+        std::fs::write(temp_bin_path, sck_bin_data)
+            .map_err(|e| ScreenCaptureError::InitializationError(format!("Failed to write sck binary: {}", e)))?;
+            
+        // Make it executable
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(mut perms) = std::fs::metadata(temp_bin_path).map(|m| m.permissions()) {
+                perms.set_mode(0o755);
+                let _ = std::fs::set_permissions(temp_bin_path, perms);
+            }
         }
 
-        // Clear any existing samples in the buffer
-        self.audio_buffer.clear();
+        // Spawn the process
+        // Route stderr to a log file so we can debug SCK issues
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/sck_audio.log")
+            .ok()
+            .map(|f| std::process::Stdio::from(f))
+            .unwrap_or_else(|| std::process::Stdio::inherit());
 
-        // In actual macOS implementation with ScreenCaptureKit:
-        // ```swift/objc bridged to Rust
-        // // Step 1: Get shareable content (windows/displays)
-        // let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
-        // 
-        // // Step 2: Create stream configuration with capturesAudio = true
-        // let config = SCStreamConfiguration()
-        // config.capturesAudio = true                           // REQUIRED - Requirement 3.2
-        // config.sampleRate = self.config.sample_rate           // 48000 Hz native
-        // config.channelCount = self.config.channel_count       // 1 = mono
-        // config.excludesCurrentProcessAudio = true             // Don't capture our own audio
-        // 
-        // // Step 3: Create content filter for desktop audio
-        // // For audio-only capture, we filter to capture all desktop audio
-        // let filter = SCContentFilter(
-        //     desktopIndependentWindow: content.windows.first!
-        // )
-        // 
-        // // Step 4: Create stream output handler (captures CMSampleBuffers)
-        // class AudioStreamDelegate: NSObject, SCStreamOutput {
-        //     let buffer: Arc<Mutex<VecDeque<i16>>>
-        //     
-        //     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        //         guard type == .audio else { return }
-        //         
-        //         // Extract audio data from CMSampleBuffer
-        //         guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
-        //         
-        //         var length = 0
-        //         var dataPointer: UnsafeMutablePointer<Int8>?
-        //         CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, 
-        //                                     totalLengthOut: &length, dataPointerOut: &dataPointer)
-        //         
-        //         if let data = dataPointer {
-        //             let samples = data.withMemoryRebound(to: Int16.self, capacity: length / 2) { ptr in
-        //                 Array(UnsafeBufferPointer(start: ptr, count: length / 2))
-        //             }
-        //             self.buffer.lock().unwrap().extend(samples)
-        //         }
-        //     }
-        // }
-        // 
-        // // Step 5: Create and start the stream
-        // let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-        // let delegate = AudioStreamDelegate(buffer: self.audio_buffer.clone_arc())
-        // try stream.addStreamOutput(delegate, type: .audio, sampleHandlerQueue: .global())
-        // try await stream.startCapture()
-        // 
-        // self.stream = Some(stream)
-        // self.content_filter = Some(filter)
-        // ```
+        let mut child = std::process::Command::new(temp_bin_path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(log_file)
+            .stdin(std::process::Stdio::piped()) // We'll hold stdin open to keep it alive
+            .spawn()
+            .map_err(|e| ScreenCaptureError::InitializationError(format!("Failed to start SCK binary: {}", e)))?;
 
-        // Validate configuration
-        if !self.config.captures_audio {
-            return Err(ScreenCaptureError::InitializationError(
-                "capturesAudio must be true for audio capture".to_string()
-            ));
-        }
+        let stdout = child.stdout.take().ok_or_else(|| {
+            ScreenCaptureError::InitializationError("Failed to capture stdout".to_string())
+        })?;
 
+        tracing::info!("SCK binary spawned with PID {:?}, reading stdout...", child.id());
+
+        self.child_process = Some(child);
         self.is_capturing = true;
+
+        let buffer_arc = self.audio_buffer.clone_arc();
+        
+        // Spawn a thread to read the PCM data (Int16 LE from Swift)
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut reader = std::io::BufReader::new(stdout);
+            let mut byte_buf = [0u8; 4096]; // Bigger buffer for audio data
+            let mut total_bytes: u64 = 0;
+            
+            loop {
+                match reader.read(&mut byte_buf) {
+                    Ok(0) => {
+                        tracing::warn!("SCK stdout closed after {} bytes", total_bytes);
+                        break;
+                    }
+                    Ok(bytes_read) => {
+                        total_bytes += bytes_read as u64;
+                        if total_bytes % (48000 * 2) < bytes_read as u64 {
+                            // Log approximately every second of audio
+                            tracing::debug!("SCK: received {} total bytes so far", total_bytes);
+                        }
+                        
+                        // Swift sends Int16 LE samples already
+                        let num_samples = bytes_read / 2;
+                        let mut samples = Vec::with_capacity(num_samples);
+                        
+                        for i in 0..num_samples {
+                            let idx = i * 2;
+                            if idx + 1 < bytes_read {
+                                let sample = i16::from_le_bytes([byte_buf[idx], byte_buf[idx + 1]]);
+                                samples.push(sample);
+                            }
+                        }
+                        
+                        if let Ok(mut lock) = buffer_arc.lock() {
+                            lock.extend(samples);
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("SCK stdout read error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
         Ok(())
     }
 
     /// Read captured audio samples, resampled to 16kHz mono for Gemini
-    /// 
-    /// Returns PCM audio samples captured since the last read, automatically
-    /// resampled from the capture rate (48kHz) to Gemini's required 16kHz mono
-    /// using the resampler from task 3.3.
-    /// 
-    /// # Returns
-    /// - `Ok(Vec<i16>)` with audio samples at 16kHz mono (may be empty if no data available)
-    /// - `Err(ScreenCaptureError)` if read fails
-    /// 
-    /// # Requirement 3.4
-    /// Converts captured audio to PCM16 mono @ 16kHz for Gemini_Live
     pub fn read_samples(&mut self) -> Result<Vec<i16>, ScreenCaptureError> {
         if !self.is_capturing {
             return Err(ScreenCaptureError::NotStarted);
@@ -507,13 +440,6 @@ impl ScreenCaptureAudio {
     }
 
     /// Read captured audio samples without resampling
-    /// 
-    /// Returns raw PCM audio samples at the capture sample rate.
-    /// Use this if you need to handle resampling externally.
-    /// 
-    /// # Returns
-    /// - `Ok(Vec<i16>)` with raw audio samples at capture rate (may be empty if no data available)
-    /// - `Err(ScreenCaptureError)` if read fails
     pub fn read_samples_raw(&mut self) -> Result<Vec<i16>, ScreenCaptureError> {
         if !self.is_capturing {
             return Err(ScreenCaptureError::NotStarted);
@@ -538,27 +464,17 @@ impl ScreenCaptureAudio {
     }
 
     /// Stop capturing system audio
-    /// 
-    /// Stops the SCStream and clears the audio buffer.
-    /// 
-    /// # Returns
-    /// - `Ok(())` if capture stopped successfully
-    /// - `Err(ScreenCaptureError)` if stop fails
     pub fn stop(&mut self) -> Result<(), ScreenCaptureError> {
         if !self.is_capturing {
             return Err(ScreenCaptureError::NotStarted);
         }
 
-        // In actual macOS implementation:
-        // ```swift/objc bridged to Rust
-        // if let Some(stream) = &self.stream {
-        //     try await stream.stopCapture()
-        //     // Remove the stream output delegate
-        //     stream.removeStreamOutput(self.delegate, type: .audio)
-        // }
-        // self.stream = None
-        // self.content_filter = None
-        // ```
+        if let Some(mut child) = self.child_process.take() {
+            // Drop stdin to signal the child process to exit cleanly
+            drop(child.stdin.take());
+            let _ = child.kill();
+            let _ = child.wait();
+        }
 
         // Clear the audio buffer
         self.audio_buffer.clear();

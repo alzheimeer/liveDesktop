@@ -17,6 +17,8 @@ import { Header } from "./components/Header";
 import { SystemAudioPanel } from "./components/SystemAudioPanel";
 import { UserMicPanel } from "./components/UserMicPanel";
 import { OnboardingWizard } from "./components/OnboardingWizard";
+import { SettingsModal } from "./components/SettingsModal";
+import { SubscriptionPage } from "./components/SubscriptionPage";
 import { useAudioEngine } from "./hooks/useAudioEngine";
 import { useConfig } from "./hooks/useConfig";
 import { useAuth } from "./hooks/useAuth";
@@ -25,13 +27,28 @@ import type { AppConfig } from "./ipc/types";
 
 function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showSubscription, setShowSubscription] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [checkingConfig, setCheckingConfig] = useState(true);
   const { loading, error, clearError, isTranslating } = useAudioEngine();
-  const { updateConfig } = useConfig();
+  const { config, updateConfig } = useConfig();
   const { saveByokKey, hasByokKey, error: authError, clearError: clearAuthError } = useAuth();
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [savingKey, setSavingKey] = useState(false);
+
+  // Apply Theme class
+  useEffect(() => {
+    const root = document.documentElement;
+    const theme = config.preferences.theme;
+    
+    root.classList.remove('dark', 'light');
+    if (theme === 'system') {
+      const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.classList.add(systemDark ? 'dark' : 'light');
+    } else {
+      root.classList.add(theme);
+    }
+  }, [config.preferences.theme]);
   
   // Check if configuration exists on mount (Requirement 13.1)
   useEffect(() => {
@@ -81,6 +98,10 @@ function App() {
     );
   }
   
+  if (showSubscription) {
+    return <SubscriptionPage isVisible={true} onBack={() => setShowSubscription(false)} />;
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header onSettingsClick={handleSettingsOpen} />
@@ -168,72 +189,16 @@ function App() {
         </div>
       </footer>
       
-      {/* Settings modal placeholder - to be implemented in task 21 */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-surface rounded-xl p-6 max-w-md w-full mx-4 border border-border">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-text">Configuración</h2>
-              <button
-                onClick={() => {
-                  clearAuthError();
-                  handleSettingsClose();
-                }}
-                className="text-text-secondary hover:text-text transition-colors p-1"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <p className="text-text-secondary text-sm mb-4">
-              El panel de configuración completo se implementará en la tarea 21 (Onboarding Wizard).
-            </p>
-            <div className="mt-4 border-t border-border pt-4">
-              <h3 className="text-md font-medium text-text mb-2">API Key de Gemini (BYOK)</h3>
-              <p className="text-xs text-text-secondary mb-3">
-                Ingresa tu VITE_GEMINI_API_KEY para habilitar la traducción local.
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  placeholder={hasByokKey ? "••••••••••••••••" : "AIzaSy..."}
-                  className="flex-1 bg-surface-hover border border-border rounded-lg px-3 py-2 text-sm text-text focus:outline-none focus:border-primary"
-                />
-                <button
-                  onClick={async () => {
-                    if (!apiKeyInput) return;
-                    setSavingKey(true);
-                    clearAuthError();
-                    try {
-                      const success = await saveByokKey(apiKeyInput);
-                      if (success) {
-                        setApiKeyInput('');
-                        handleSettingsClose();
-                      }
-                    } catch (e) {
-                      console.error("Failed to save API key", e);
-                    } finally {
-                      setSavingKey(false);
-                    }
-                  }}
-                  disabled={savingKey || !apiKeyInput}
-                  className="bg-primary hover:bg-primary/90 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-                >
-                  {savingKey ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-              {authError && (
-                <div className="mt-2 text-xs text-error">
-                  {authError}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Full Settings Modal */}
+      <SettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => {
+          clearAuthError();
+          handleSettingsClose();
+        }} 
+        onOpenSubscription={() => setShowSubscription(true)}
+      />
+
       
       {/* Onboarding Wizard - starts automatically if no config saved */}
       <OnboardingWizard

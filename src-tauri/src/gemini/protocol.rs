@@ -20,10 +20,27 @@ pub struct SetupMessage {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupConfig {
-    /// Model name (e.g., "models/gemini-3.5-live-translate-preview")
+    /// Model name (e.g., "models/gemini-2.0-flash-live-001")
     pub model: String,
     /// Generation configuration for the session
     pub generation_config: GenerationConfig,
+    /// System instruction for translation behavior
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system_instruction: Option<SystemInstruction>,
+}
+
+/// System instruction content
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInstruction {
+    pub parts: Vec<TextPart>,
+}
+
+/// Text content part for system instructions
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextPart {
+    pub text: String,
 }
 
 /// Generation configuration for audio output
@@ -111,8 +128,8 @@ pub struct MediaChunk {
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ServerResponse {
-    /// True when setup is complete
-    pub setup_complete: Option<bool>,
+    /// Empty object when setup is complete
+    pub setup_complete: Option<serde_json::Value>,
     /// Content from the model
     pub server_content: Option<ServerContent>,
     /// Error information if any

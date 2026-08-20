@@ -17,7 +17,7 @@
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use serde::{Deserialize, Serialize};
-use crate::gemini::{GeminiSessionManager, GeminiConfig};
+use crate::gemini::GeminiSessionManager;
 
 #[cfg(target_os = "windows")]
 use crate::audio::windows::{wasapi, vbcable};
@@ -320,20 +320,17 @@ impl AudioEngine {
             }
             
             // En macOS 14+, ScreenCaptureKit permite captura nativa sin necesidad de loopback.
-            // Siempre agregamos un dispositivo virtual para la captura de sistema.
-            let has_loopback = unique_devices.iter().any(|d| d.device_type == "loopback");
-            if !has_loopback {
-                unique_devices.push(AudioDevice {
-                    id: "screencapturekit_native".to_string(),
-                    name: "Captura de Sistema (macOS Nativo)".to_string(),
-                    device_type: "loopback".to_string(),
-                    is_default: true,
-                });
-            } else {
-                // Set the first loopback as default if there is one
-                if let Some(first_loopback) = unique_devices.iter_mut().find(|d| d.device_type == "loopback") {
-                    first_loopback.is_default = true;
-                }
+            // Siempre agregamos la opción nativa de captura de sistema, incluso si hay loopback.
+            unique_devices.push(AudioDevice {
+                id: "screencapturekit_native".to_string(),
+                name: "Captura de Sistema (macOS Nativo)".to_string(),
+                device_type: "loopback".to_string(),
+                is_default: true,
+            });
+            
+            // Set the first loopback as default if there is one, but we prefer native
+            if let Some(first_loopback) = unique_devices.iter_mut().find(|d| d.id == "screencapturekit_native") {
+                first_loopback.is_default = true;
             }
 
             tracing::info!("Enumerated {} macOS audio devices", unique_devices.len());
@@ -363,7 +360,16 @@ impl AudioEngine {
     /// - Channel is already active
     /// - Input device not found
     /// - Failed to connect to Gemini
-    pub async fn start_system_channel(&self, config: ChannelConfig, token: &str) -> Result<(), String> {
+    pub async fn start_system_channel(
+        &self,
+        config: ChannelConfig,
+        token: &str,
+    ) -> Result<(), String> {
+        // DEBUG
+        let mut file = std::fs::File::create("/tmp/debug_input_device").unwrap();
+        use std::io::Write;
+        writeln!(file, "input_device = {}", config.input_device).unwrap();
+
         let mut channel = self.system_channel.write().await;
         
         // Check if already active
@@ -399,16 +405,81 @@ impl AudioEngine {
                 .map_err(|e| format!("Failed to connect to Gemini: {}", e))?;
         }
 
-        // Start CPAL capture on input device
+        // Start capture on input device
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<i16>>(100);
-        let shutdown_tx = crate::audio::cpal_capture::start_mic_capture(config.input_device.clone(), tx)?;
+        let shutdown_tx;
+
+        #[cfg(target_os = "macos")]
+        if config.input_device == "screencapturekit_native" {
+            let tx = tx.clone();
+            let (sck_shutdown_tx, mut sck_shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+            shutdown_tx = sck_shutdown_tx;
+
+            tokio::spawn(async move {
+                let mut capture = crate::audio::macos::screencapture::ScreenCaptureAudio::new();
+                if let Err(e) = capture.start_capture().await {
+                    tracing::error!("Failed to start native screencapture: {}", e);
+                    let _ = std::fs::write("/tmp/sck_engine.log", format!("ERROR start_capture: {}\n", e));
+                    return;
+                }
+                
+                let _ = std::fs::write("/tmp/sck_engine.log", "capture started, entering loop\n");
+                let mut total_samples: u64 = 0;
+                let mut ticks: u64 = 0;
+                let mut interval = tokio::time::interval(std::time::Duration::from_millis(50));
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            ticks += 1;
+                            if let Ok(samples) = capture.read_samples() {
+                                if !samples.is_empty() {
+                                    total_samples += samples.len() as u64;
+                                    if ticks % 20 == 0 {
+                                        // Log every ~1 second
+                                        let _ = std::fs::write("/tmp/sck_engine.log",
+                                            format!("tick={} total_samples={} sending {} samples\n",
+                                                ticks, total_samples, samples.len()));
+                                    }
+                                    if tx.send(samples).await.is_err() {
+                                        let _ = std::fs::write("/tmp/sck_engine.log", "tx.send failed, channel closed\n");
+                                        break;
+                                    }
+                                } else if ticks % 40 == 0 {
+                                    let _ = std::fs::write("/tmp/sck_engine.log",
+                                        format!("tick={} no samples yet (buffer empty)\n", ticks));
+                                }
+                            }
+                        }
+                        _ = &mut sck_shutdown_rx => {
+                            tracing::info!("Stopping native screencapture");
+                            let _ = capture.stop();
+                            break;
+                        }
+                    }
+                }
+            });
+        } else {
+            shutdown_tx = crate::audio::cpal_capture::start_mic_capture(config.input_device.clone(), tx)?;
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            shutdown_tx = crate::audio::cpal_capture::start_mic_capture(config.input_device.clone(), tx)?;
+        }
         
         let gemini_sessions_clone = self.gemini_sessions.clone();
         tokio::spawn(async move {
+            let mut sent_count: u64 = 0;
             while let Some(samples) = rx.recv().await {
-                let mut sessions = gemini_sessions_clone.write().await;
+                sent_count += 1;
+                if sent_count == 1 || sent_count % 20 == 0 {
+                    let _ = std::fs::write("/tmp/sck_gemini.log",
+                        format!("sending batch {} to Gemini ({} samples)\n", sent_count, samples.len()));
+                }
+                let sessions = gemini_sessions_clone.read().await;
                 if let Err(e) = sessions.send_audio(crate::gemini::ChannelType::System, &samples).await {
                     tracing::error!("Error sending system audio to Gemini: {}", e);
+                    let _ = std::fs::write("/tmp/sck_gemini.log", format!("Gemini send ERROR: {}\n", e));
                     break;
                 }
             }
@@ -422,14 +493,21 @@ impl AudioEngine {
         
         let gemini_sessions_clone2 = self.gemini_sessions.clone();
         tokio::spawn(async move {
+            let mut recv_count: u64 = 0;
             loop {
                 let audio_opt = {
-                    let mut sessions = gemini_sessions_clone2.write().await;
+                    let sessions = gemini_sessions_clone2.read().await;
                     sessions.receive_audio(crate::gemini::ChannelType::System).await
                 };
                 
                 match audio_opt {
                     Ok(Some(samples)) => {
+                        recv_count += 1;
+                        if recv_count == 1 || recv_count % 10 == 0 {
+                            let _ = std::fs::write("/tmp/sck_playback.log",
+                                format!("recv #{} from Gemini: {} samples, playback_rate={}\n",
+                                    recv_count, samples.len(), playback_rate));
+                        }
                         let resampled = if playback_rate != 24000 {
                             crate::audio::resampler::resample_from_gemini_output(&samples, playback_rate)
                         } else {
@@ -440,10 +518,13 @@ impl AudioEngine {
                         buf.extend_from_slice(&resampled);
                     },
                     Ok(None) => {
-                        // Connection closed or no more audio
+                        let _ = std::fs::write("/tmp/sck_playback.log",
+                            format!("Gemini connection closed after {} recvs\n", recv_count));
                         break;
                     },
                     Err(e) => {
+                        let _ = std::fs::write("/tmp/sck_playback.log",
+                            format!("Gemini receive ERROR after {} recvs: {}\n", recv_count, e));
                         tracing::error!("Error receiving system audio from Gemini: {}", e);
                         break;
                     }
@@ -544,7 +625,7 @@ impl AudioEngine {
         let gemini_sessions_clone = self.gemini_sessions.clone();
         tokio::spawn(async move {
             while let Some(samples) = rx.recv().await {
-                let mut sessions = gemini_sessions_clone.write().await;
+                let sessions = gemini_sessions_clone.read().await;
                 if let Err(e) = sessions.send_audio(crate::gemini::ChannelType::User, &samples).await {
                     tracing::error!("Error sending user audio to Gemini: {}", e);
                     break;
@@ -562,7 +643,7 @@ impl AudioEngine {
         tokio::spawn(async move {
             loop {
                 let audio_opt = {
-                    let mut sessions = gemini_sessions_clone2.write().await;
+                    let sessions = gemini_sessions_clone2.read().await;
                     sessions.receive_audio(crate::gemini::ChannelType::User).await
                 };
                 

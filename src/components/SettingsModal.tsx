@@ -18,13 +18,15 @@ import { useConfig } from '../hooks/useConfig';
 import { useAuth } from '../hooks/useAuth';
 import { useAudioEngine } from '../hooks/useAudioEngine';
 import { DualLanguageSelector } from './LanguageSelector';
+import { AuthStep } from './AuthStep';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenSubscription?: () => void;
 }
 
-type Tab = 'devices' | 'languages' | 'byok' | 'preferences';
+type Tab = 'devices' | 'languages' | 'account' | 'byok' | 'preferences';
 
 /** Tab button component */
 function TabButton({ 
@@ -115,9 +117,9 @@ function Toggle({
   );
 }
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose, onOpenSubscription }: SettingsModalProps) {
   const { config, updateConfig, saveConfig, hasChanges, loading: configLoading } = useConfig();
-  const { hasByokKey, saveByokKey, removeByokKey, validateByokKeyComplete, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, logout, hasByokKey, saveByokKey, removeByokKey, validateByokKeyComplete, loading: authLoading } = useAuth();
   const { inputDevices, outputDevices, loopbackDevices, refreshDevices } = useAudioEngine();
   
   const [activeTab, setActiveTab] = useState<Tab>('devices');
@@ -231,6 +233,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           <TabButton active={activeTab === 'languages'} onClick={() => setActiveTab('languages')}>
             Idiomas
           </TabButton>
+          <TabButton active={activeTab === 'account'} onClick={() => setActiveTab('account')}>
+            Cuenta
+          </TabButton>
           <TabButton active={activeTab === 'byok'} onClick={() => setActiveTab('byok')}>
             BYOK
           </TabButton>
@@ -288,6 +293,57 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 en la siguiente sesión de traducción.
               </p>
               <DualLanguageSelector showSource={true} />
+            </div>
+          )}
+          
+          {/* Account Tab */}
+          {activeTab === 'account' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-surface-hover rounded-lg">
+                <h3 className="text-sm font-medium text-text mb-4">
+                  Tu Cuenta
+                </h3>
+                
+                {isAuthenticated && user ? (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center">
+                        <span className="text-primary text-xl font-medium">
+                          {user.name?.charAt(0).toUpperCase() || user.email?.charAt(0).toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{user.name || 'Usuario'}</p>
+                        <p className="text-sm text-text-secondary">{user.email}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-3">
+                      {onOpenSubscription && (
+                        <button
+                          onClick={() => {
+                            onClose();
+                            onOpenSubscription();
+                          }}
+                          className="px-4 py-2 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition text-sm"
+                        >
+                          Administrar Suscripción
+                        </button>
+                      )}
+                      <button
+                        onClick={() => logout()}
+                        className="px-4 py-2 bg-error/10 text-error rounded-lg hover:bg-error/20 transition text-sm"
+                      >
+                        Cerrar Sesión
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2">
+                    <AuthStep onSuccess={() => {}} />
+                  </div>
+                )}
+              </div>
             </div>
           )}
           

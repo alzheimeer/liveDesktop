@@ -250,7 +250,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const startSystem = useCallback(async (config: ChannelConfig, token?: string) => {
     try {
       setError(null);
-      await startSystemChannel(config, token);
+      const resolvedToken = token || import.meta.env.VITE_GEMINI_API_KEY || undefined;
+      await startSystemChannel(config, resolvedToken);
     } catch (err) {
       const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Error al iniciar canal de sistema';
       setError(message);
@@ -261,7 +262,8 @@ export function useAudioEngine(): UseAudioEngineReturn {
   const startUser = useCallback(async (config: ChannelConfig, token?: string) => {
     try {
       setError(null);
-      await startUserChannel(config, token);
+      const resolvedToken = token || import.meta.env.VITE_GEMINI_API_KEY || undefined;
+      await startUserChannel(config, resolvedToken);
     } catch (err) {
       const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Error al iniciar canal de usuario';
       setError(message);

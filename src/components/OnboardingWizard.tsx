@@ -19,11 +19,15 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAudioEngine } from '../hooks/useAudioEngine';
 import { useConfig } from '../hooks/useConfig';
 import { AudioTestPanel } from './AudioTestPanel';
+import { AuthStep } from './AuthStep';
+import { SubscriptionPage } from './SubscriptionPage';
 import type { AudioDevice, AppConfig, VirtualAudioStatus } from '../ipc/types';
 
 /** Wizard step identifiers - now includes audio test steps */
 type WizardStep = 
   | 'welcome' 
+  | 'auth'            // NEW: Auth step
+  | 'plan'            // NEW: Plan selection
   | 'capture' 
   | 'capture_test'    // NEW: Test capture device
   | 'microphone' 
@@ -372,10 +376,10 @@ export function OnboardingWizard({ onComplete, onSkip, isOpen }: OnboardingWizar
   // macOS: uses Virtual Audio Endpoint (native on 14+) or BlackHole (fallback for <14)
   // Audio test steps are added after each device selection (Requirement 13.8)
   const steps: WizardStep[] = isWindows
-    ? ['welcome', 'capture', 'capture_test', 'microphone', 'microphone_test', 'output', 'output_test', 'vbcable', 'complete']
+    ? ['welcome', 'auth', 'plan', 'capture', 'capture_test', 'microphone', 'microphone_test', 'output', 'output_test', 'vbcable', 'complete']
     : isMacOS
-    ? ['welcome', 'capture', 'capture_test', 'microphone', 'microphone_test', 'output', 'output_test', 'virtual_audio', 'complete']
-    : ['welcome', 'capture', 'capture_test', 'microphone', 'microphone_test', 'output', 'output_test', 'complete'];
+    ? ['welcome', 'auth', 'plan', 'capture', 'capture_test', 'microphone', 'microphone_test', 'output', 'output_test', 'virtual_audio', 'complete']
+    : ['welcome', 'auth', 'plan', 'capture', 'capture_test', 'microphone', 'microphone_test', 'output', 'output_test', 'complete'];
 
   const currentStepIndex = steps.indexOf(currentStep);
   const totalSteps = steps.length;
@@ -463,6 +467,8 @@ export function OnboardingWizard({ onComplete, onSkip, isOpen }: OnboardingWizar
     switch (currentStep) {
       case 'welcome':
         return true;
+      case 'auth':
+        return false; // Can only proceed via onSuccess
       case 'capture':
         return selectedCaptureDevice !== null || loopbackDevices.length === 0;
       case 'capture_test':
@@ -560,6 +566,27 @@ export function OnboardingWizard({ onComplete, onSkip, isOpen }: OnboardingWizar
           </div>
         );
 
+
+      case 'auth':
+        return <AuthStep onSuccess={handleNext} />;
+
+      case 'plan':
+        return (
+          <div className="flex flex-col h-full max-h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold text-text mb-4">Elige tu Plan</h2>
+            <div className="flex-1 -mx-8 px-8">
+              <SubscriptionPage isVisible={true} onBack={handleNext} />
+            </div>
+            <div className="mt-4 pt-4 border-t border-border flex justify-end">
+              <button
+                onClick={handleNext}
+                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover font-medium transition-colors"
+              >
+                Continuar
+              </button>
+            </div>
+          </div>
+        );
 
       case 'capture':
         return (

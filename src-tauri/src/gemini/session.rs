@@ -226,18 +226,15 @@ impl GeminiSessionManager {
         )))
     }
 
-    /// Get a mutable reference to the system session client
-    pub fn get_system_session(&mut self) -> Option<&mut GeminiLiveClient> {
-        self.system_session.as_mut().map(|s| &mut s.client)
+    pub fn get_system_session(&self) -> Option<GeminiLiveClient> {
+        self.system_session.as_ref().map(|s| s.client.clone())
     }
 
-    /// Get a mutable reference to the user session client
-    pub fn get_user_session(&mut self) -> Option<&mut GeminiLiveClient> {
-        self.user_session.as_mut().map(|s| &mut s.client)
+    pub fn get_user_session(&self) -> Option<GeminiLiveClient> {
+        self.user_session.as_ref().map(|s| s.client.clone())
     }
 
-    /// Get a mutable reference to a session by channel type
-    pub fn get_session(&mut self, channel: ChannelType) -> Option<&mut GeminiLiveClient> {
+    pub fn get_session(&self, channel: ChannelType) -> Option<GeminiLiveClient> {
         match channel {
             ChannelType::System => self.get_system_session(),
             ChannelType::User => self.get_user_session(),
@@ -278,9 +275,8 @@ impl GeminiSessionManager {
         }
     }
 
-    /// Send audio to a specific channel
     pub async fn send_audio(
-        &mut self,
+        &self,
         channel: ChannelType,
         samples: &[i16],
     ) -> Result<(), GeminiError> {
@@ -290,9 +286,8 @@ impl GeminiSessionManager {
         client.send_audio(samples).await
     }
 
-    /// Receive audio from a specific channel
     pub async fn receive_audio(
-        &mut self,
+        &self,
         channel: ChannelType,
     ) -> Result<Option<Vec<i16>>, GeminiError> {
         let client = self.get_session(channel)
@@ -301,9 +296,8 @@ impl GeminiSessionManager {
         client.receive_audio().await
     }
 
-    /// Receive audio from a channel with timeout
     pub async fn receive_audio_timeout(
-        &mut self,
+        &self,
         channel: ChannelType,
         timeout_ms: u64,
     ) -> Result<Option<Vec<i16>>, GeminiError> {
