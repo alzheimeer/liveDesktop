@@ -1,5 +1,6 @@
 # Traductor Desktop
 
+
 Aplicación de escritorio para traducción de voz en tiempo real utilizando la API Gemini Live de Google.
 
 ## Características
